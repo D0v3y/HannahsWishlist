@@ -17,7 +17,7 @@ export const guestEmail = "gast@example.com";
 // Address of your own lookup service (worker/lookup.js on Cloudflare, see
 // README.md), e.g. "https://wunschliste-lookup.<name>.workers.dev".
 // While this is empty, the "Ausfüllen" button is hidden.
-export const lookupUrl = "https://wunschliste-lookup.jansen-malte96.workers.dev/";
+export const lookupUrl = "https://wunschliste-lookup.d0v3y.workers.dev/";
 
 // ─── Firebase ───────────────────────────────────────────────
 // Paste the values from Firebase console → Project settings → Your apps.
