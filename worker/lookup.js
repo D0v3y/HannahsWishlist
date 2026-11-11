@@ -1,4 +1,5 @@
-// GET /api/lookup?url=<product link>  →  { title, description, image, price, priceNote, sold }
+// GET  /api/lookup?url=<product link>   →  { title, description, image, price, priceNote, sold }
+// POST /api/lookup { url, html, preview } — the same, for a page the site fetched itself
 // Browsers may not read other websites, so the Worker fetches the shop page and
 // reads name, picture and price from it. Only for people signed in to the wishlist.
 import { verifyUser } from "./auth.js";
@@ -18,6 +19,7 @@ const JUNK_TITLE = /^(page not found|not found|seite nicht gefunden|404|403|acce
 
 export async function handleLookup(request, env) {
   if (!(await verifyUser(request, env))) return json({ error: "not signed in" }, 401);
+  if (request.method === "POST") return readSentPage(request, env);
 
   const target = shopUrl(new URL(request.url).searchParams.get("url"), env);
   if (!target) return json({ error: "invalid url" }, 400);
@@ -35,6 +37,30 @@ export async function handleLookup(request, env) {
   const found = await readPage(response, { vestiaire: isVestiaire(response.url) });
   if (found.blocked) return json({ error: "blocked by shop" }, 502);
   const result = summarize(found, response.url);
+  if (!result.title) return json({ error: "nothing found" }, 422);
+  return json(result);
+}
+
+// Fallback for shops that turn our server away (e.g. Vinted answers Cloudflare with 429):
+// the site fetches the page through microlink and sends it here, so it's read exactly
+// like a page we fetched ourselves. `preview` is microlink's own summary, used only if
+// the page itself yields nothing.
+async function readSentPage(request, env) {
+  const body = await request.json().catch(() => null);
+  const target = shopUrl(body?.url, env);
+  const html = typeof body?.html === "string" ? body.html : "";
+  if (!target || html.length > 10_000_000) return json({ error: "invalid input" }, 400); // Amazon pages are ~3 MB
+
+  const found = await readPage(new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } }), { vestiaire: isVestiaire(target) });
+  if (found.blocked) return json({ error: "blocked by shop" }, 502);
+  const result = summarize(found, target);
+  const preview = body.preview || {};
+  if (!result.title && typeof preview.title === "string") {
+    result.title = cleanTitle(preview.title);
+    if (JUNK_TITLE.test(result.title)) result.title = "";
+    result.description ||= cleanDescription(String(preview.description || ""), preview.title);
+    result.image ||= absoluteUrl(typeof preview.image === "string" ? preview.image : null, target);
+  }
   if (!result.title) return json({ error: "nothing found" }, 422);
   return json(result);
 }

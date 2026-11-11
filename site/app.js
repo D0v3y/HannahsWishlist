@@ -536,7 +536,9 @@ async function lookUpProduct(url) {
   try {
     data = await api(`/api/lookup?url=${encodeURIComponent(url)}`);
   } catch (err) {
-    throw new Error(err.status === 429 ? "limit" : err.message);
+    // 502: the shop turned our server away (e.g. Vinted), 422: it found nothing readable.
+    if (err.status !== 502 && err.status !== 422) throw new Error(err.status === 429 ? "limit" : err.message);
+    data = await lookUpViaMicrolink(url);
   }
   if (!data?.title) throw new Error("nothing found");
   return {
@@ -547,6 +549,26 @@ async function lookUpProduct(url) {
     priceNote: data.priceNote || "",
     sold: Boolean(data.sold),
   };
+}
+
+// Fallback: microlink.io fetches the page through its own servers, which some shops let in
+// when they block ours. It only hands over the raw page — our Worker reads it like any other,
+// so prices and clean-up work the same. Free without a key: a handful of lookups a day.
+async function lookUpViaMicrolink(url) {
+  const query = new URLSearchParams({ url, "data.page.selector": "html", "data.page.attr": "outerHTML" });
+  const res = await fetch(`https://api.microlink.io/?${query}`);
+  if (res.status === 429) throw new Error("limit");
+  const json = await res.json().catch(() => null);
+  if (!res.ok || json?.status !== "success") throw new Error(`microlink: ${json?.message || res.status}`);
+  const d = json.data || {};
+  try {
+    return await api("/api/lookup", {
+      method: "POST",
+      body: { url, html: typeof d.page === "string" ? d.page : "", preview: { title: d.title, description: d.description, image: d.image?.url } },
+    });
+  } catch (err) {
+    throw new Error(err.status === 429 ? "limit" : err.message);
+  }
 }
 
 // Calls our own server with the visitor's sign-in, so only wishlist visitors can use it.
