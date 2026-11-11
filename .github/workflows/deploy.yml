@@ -1,0 +1,24 @@
+# Deploys the site + API to Cloudflare on every push:
+#   staging → test copy (wunschliste-staging), main → the real list (wunschliste).
+# Needs the repository secret CLOUDFLARE_API_TOKEN (see README).
+name: Deploy
+
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: "4.160.1"
+          command: deploy ${{ github.ref_name == 'staging' && '--env staging' || '' }}

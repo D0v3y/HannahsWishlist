@@ -1,14 +1,9 @@
-// Lookup service for the wishlist's "Ausfüllen" button — a Cloudflare Worker (free plan).
-//
-// Browsers may not read other websites, so this small service fetches the shop
-// page and returns what the form needs:
-//   GET https://<your-worker>.workers.dev/?url=<product link>
-//   →  { "title": "...", "description": "...", "image": "https://...", "price": 369.99 }
-//
-// It only answers requests coming from the wishlist itself (ALLOWED_ORIGINS),
-// so nobody else can use it as a free proxy.
-
-const ALLOWED_ORIGINS = ["https://d0v3y.github.io", "http://localhost:5173"];
+// GET /api/lookup?url=<product link>  →  { title, description, image, price, priceNote, sold }
+// Browsers may not read other websites, so the Worker fetches the shop page and
+// reads name, picture and price from it. Only for people signed in to the wishlist.
+import { verifyUser } from "./auth.js";
+import { json } from "./http.js";
+import { isVestiaire, vestiaireDetails } from "./vestiaire.js";
 
 const BROWSER_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
@@ -21,38 +16,27 @@ const AMAZON_PRICE_BOXES = ["#corePriceDisplay_desktop_feature_div", "#corePrice
 
 const JUNK_TITLE = /^(page not found|not found|seite nicht gefunden|404|403|access denied|zugriff verweigert|robot check|just a moment|attention required|amazon(\.[a-z]+)+)\b/i;
 
-export default {
-  async fetch(request, env) {
-    const origin = request.headers.get("Origin") || "";
-    if (!ALLOWED_ORIGINS.includes(origin)) return reply({ error: "forbidden" }, 403);
-    const cors = { "Access-Control-Allow-Origin": origin, Vary: "Origin" };
+export async function handleLookup(request, env) {
+  if (!(await verifyUser(request, env))) return json({ error: "not signed in" }, 401);
 
-    const target = shopUrl(new URL(request.url).searchParams.get("url"), env);
-    if (!target) return reply({ error: "invalid url" }, 400, cors);
+  const target = shopUrl(new URL(request.url).searchParams.get("url"), env);
+  if (!target) return json({ error: "invalid url" }, 400);
 
-    let page;
-    try {
-      page = await fetch(target, { headers: BROWSER_HEADERS, redirect: "follow", signal: AbortSignal.timeout(12000) });
-    } catch {
-      return reply({ error: "shop not reachable" }, 502, cors);
-    }
-    if (!page.ok || !(page.headers.get("content-type") || "").includes("html")) {
-      return reply({ error: `shop answered ${page.status}` }, 502, cors);
-    }
+  let response;
+  try {
+    response = await fetch(target, { headers: BROWSER_HEADERS, redirect: "follow", signal: AbortSignal.timeout(12000) });
+  } catch {
+    return json({ error: "shop not reachable" }, 502);
+  }
+  if (!response.ok || !(response.headers.get("content-type") || "").includes("html")) {
+    return json({ error: `shop answered ${response.status}` }, 502);
+  }
 
-    const found = await readPage(page);
-    if (found.blocked) return reply({ error: "blocked by shop" }, 502, cors);
-    const result = summarize(found, page.url);
-    if (!result.title) return reply({ error: "nothing found" }, 422, cors);
-    return reply(result, 200, cors);
-  },
-};
-
-function reply(body, status, headers = {}) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...headers },
-  });
+  const found = await readPage(response, { vestiaire: isVestiaire(response.url) });
+  if (found.blocked) return json({ error: "blocked by shop" }, 502);
+  const result = summarize(found, response.url);
+  if (!result.title) return json({ error: "nothing found" }, 422);
+  return json(result);
 }
 
 // Only public http(s) pages. ALLOW_LOCAL is only set when testing on your own computer.
@@ -71,10 +55,10 @@ function shopUrl(raw, env) {
 }
 
 // ─── Reading the page ───────────────────────────────────────
-async function readPage(response) {
+async function readPage(response, { vestiaire = false } = {}) {
   const f = {
     meta: {}, title: null, productTitle: null, ld: [],
-    amzValue: null, amzWhole: null, amzFraction: null, landingImage: null, blocked: false,
+    amzValue: null, amzWhole: null, amzFraction: null, landingImage: null, nextData: null, blocked: false,
   };
   // collects the text of the first element that matches (later matches are ignored)
   const firstText = (key) => {
@@ -113,6 +97,7 @@ async function readPage(response) {
   for (const box of AMAZON_PRICE_BOXES) {
     rewriter = rewriter.on(`${box} .a-price-whole`, whole).on(`${box} .a-price-fraction`, fraction);
   }
+  if (vestiaire) rewriter = rewriter.on("script#__NEXT_DATA__", firstText("nextData"));
   await rewriter.transform(response).arrayBuffer();
   return f;
 }
@@ -122,12 +107,22 @@ function summarize(f, pageUrl) {
   const rawTitle = decode(f.productTitle || m["og:title"] || m["twitter:title"] || f.title || "");
   const title = cleanTitle(rawTitle);
   const image = absoluteUrl(m["og:image"] || m["og:image:secure_url"] || m["og:image:url"] || m["twitter:image"] || f.landingImage, pageUrl);
-  return {
+  const result = {
     title: JUNK_TITLE.test(title) ? "" : title,
     description: cleanDescription(decode(m["og:description"] || m.description || m["twitter:description"] || ""), rawTitle),
     image,
     price: findPrice(f),
+    priceNote: "",
+    sold: false,
   };
+  const vc = f.nextData && vestiaireDetails(f.nextData);
+  if (vc) {
+    result.title = result.title.replace(/\s+-\s+\d{5,}$/, ""); // "… - Grau - 72518642"
+    result.description = clip(vc.description, 280); // the seller's text instead of the shop's SEO text
+    if (vc.price) Object.assign(result, { price: vc.price, priceNote: vc.priceNote });
+    result.sold = vc.sold;
+  }
+  return result;
 }
 
 // ─── Price ──────────────────────────────────────────────────

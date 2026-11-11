@@ -101,6 +101,7 @@ button { cursor: pointer; }
   font-size: 14px;
   text-align: center;
 }
+.staging-banner { background: #2f6690; color: #fff; } /* test copy: blue, so it's never mistaken for the real list */
 
 .topbar {
   display: flex;
@@ -363,6 +364,55 @@ main {
 .wish-link:hover { background: var(--accent-hover); }
 .wish-link svg { width: 16px; height: 16px; }
 
+/* "Geschenk reservieren" — only for guests, never for the list's owner */
+.wish-reserve {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  transition: background .15s, border-color .15s;
+}
+.is-guest .wish-reserve { display: flex; }
+.wish-reserve:hover { border-color: var(--accent); background: var(--accent-soft); }
+.wish-reserve svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* price filter above the list */
+.filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 10px;
+  margin: -12px auto 28px;
+}
+.filter-label { color: var(--muted); font-size: 15px; font-weight: 600; }
+.filter-field { position: relative; }
+.filter-field input {
+  width: 118px;
+  min-height: 42px;
+  padding: 9px 30px 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 16px; /* 16px stops iOS from zooming in */
+  font-variant-numeric: tabular-nums;
+}
+.filter-field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.filter-currency { position: absolute; top: 50%; right: 13px; color: var(--muted); transform: translateY(-50%); pointer-events: none; }
+.filter-dash { color: var(--muted); }
+.filter-reset { min-height: 42px; padding-inline: 14px; }
+.filter-note { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 14px; text-align: center; }
+
 /* loading placeholders */
 .skeleton .wish-media { background: var(--surface-2); }
 .bone {
@@ -397,6 +447,7 @@ main {
 .is-locked .wishes,
 .is-locked .empty,
 .is-locked .count,
+.is-locked .filter,
 .is-locked .auth-btn { display: none !important; }
 
 .gate-card {
@@ -643,6 +694,16 @@ dialog.sheet:focus { outline: none; } /* focused on open (autofocus) so Safari d
 .is-cramped dialog.sheet[open] { overflow-y: auto; overscroll-behavior: contain; }
 .is-cramped .sheet form,
 .is-cramped .sheet-body { flex: none; overflow: visible; }
+
+/* reservation window: the question, then "check your inbox" */
+.reserve-wish { margin: 0 0 8px; font-family: var(--font-display); font-size: 1.2rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.reserve-done { display: none; padding: 8px 0 14px; text-align: center; }
+.reserve-done-icon { font-size: 40px; line-height: 1; }
+.reserve-done-title { margin: 12px 0 6px; font-family: var(--font-display); font-size: 1.3rem; font-weight: 600; }
+.reserve-done p:last-child { margin: 0; color: var(--muted); }
+#reserve-form.is-sent .reserve-ask,
+#reserve-form.is-sent .reserve-ask-only { display: none; }
+#reserve-form.is-sent .reserve-done { display: block; }
 
 /* ─── Form fields ────────────────────────────────────────── */
 .lead { margin: 0 0 18px; color: var(--muted); }

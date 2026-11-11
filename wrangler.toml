@@ -1,0 +1,51 @@
+# Hannahs Wunschliste — the site (./site) and its API (./worker) on Cloudflare Workers.
+# Deployed automatically by .github/workflows/deploy.yml:
+#   push to "staging" → test copy     test.hannahswunschliste.com     (Worker "wunschliste-staging")
+#   push to "main"    → the real list hannahswunschliste.com (+ www)  (Worker "wunschliste")
+#
+# Secrets — set in Cloudflare → Workers & Pages → <worker> → Settings → Variables and Secrets,
+# never in this file:
+#   SMTP_USER   Gmail address that sends the reservation e-mails
+#   SMTP_PASS   its 16-letter Google app password
+name = "wunschliste"
+main = "worker/index.js"
+compatibility_date = "2025-06-01"
+account_id = "30219bfd105846d62d44f80a3247427e"
+routes = [
+  { pattern = "hannahswunschliste.com", custom_domain = true },
+  { pattern = "www.hannahswunschliste.com", custom_domain = true },
+]
+
+[assets]
+directory = "./site"
+binding = "ASSETS"
+run_worker_first = true # the Worker decides: API routes itself, everything else from ./site
+
+[vars]
+FIREBASE_PROJECT_ID = "hannahs-wishlist"
+GUEST_EMAIL = "gast@example.com"   # the shared guest account (same as site/config.js)
+OWNER_NAME = "Hannah"
+MAIL_FROM_NAME = "Hannahs Wunschliste"
+SUPPORT_EMAIL = "support@hannahswunschliste.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "wunschliste"
+database_id = "ab10f507-15e5-4cf3-8744-55ed1aec70ff"
+
+# ─── Test copy ──────────────────────────────────────────────
+[env.staging]
+name = "wunschliste-staging"
+routes = [{ pattern = "test.hannahswunschliste.com", custom_domain = true }]
+
+[env.staging.vars]
+FIREBASE_PROJECT_ID = "hannahs-wishlist-staging"   # the separate Firebase test project
+GUEST_EMAIL = "gast@example.com"
+OWNER_NAME = "Hannah"
+MAIL_FROM_NAME = "Hannahs Wunschliste (Test)"
+SUPPORT_EMAIL = "support@hannahswunschliste.com"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "wunschliste-staging"
+database_id = "725b803e-b9c0-41b7-8551-bb97addbef8f"

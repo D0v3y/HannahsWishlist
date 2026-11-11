@@ -20,6 +20,10 @@
     Vorschau-Modus – Änderungen werden nur in diesem Browser gespeichert. Für die echte Seite Firebase verbinden (siehe README).
   </div>
 
+  <div id="staging-banner" class="preview-banner staging-banner" hidden>
+    Testumgebung – hier kannst du alles ausprobieren, die echte Wunschliste bleibt unberührt.
+  </div>
+
   <div class="topbar">
     <p id="editor-status" class="editor-status"><span class="dot"></span><span>Angemeldet als <strong id="editor-email"></strong></span></p>
     <button id="auth-btn" class="auth-btn" type="button" hidden>
@@ -52,6 +56,23 @@
         <button type="button" id="gate-login" class="link-btn">Liste bearbeiten? Mit E-Mail anmelden</button>
       </form>
     </section>
+
+    <div id="filter" class="filter" role="search" hidden>
+      <span class="filter-label" id="filter-label">Preis</span>
+      <label class="filter-field">
+        <span class="sr-only">Preis von</span>
+        <input id="filter-min" type="text" inputmode="decimal" autocomplete="off" placeholder="von" aria-describedby="filter-label">
+        <span class="filter-currency" aria-hidden="true">€</span>
+      </label>
+      <span class="filter-dash" aria-hidden="true">–</span>
+      <label class="filter-field">
+        <span class="sr-only">Preis bis</span>
+        <input id="filter-max" type="text" inputmode="decimal" autocomplete="off" placeholder="bis" aria-describedby="filter-label">
+        <span class="filter-currency" aria-hidden="true">€</span>
+      </label>
+      <button type="button" id="filter-reset" class="btn btn-ghost filter-reset" hidden>Zurücksetzen</button>
+      <p id="filter-note" class="filter-note" aria-live="polite" hidden></p>
+    </div>
 
     <ul id="wishes" class="wishes"></ul>
 
@@ -211,6 +232,43 @@
     </form>
   </dialog>
 
+  <!-- Reserve a gift (guests) -->
+  <dialog id="reserve-dialog" class="sheet sheet-small" aria-labelledby="reserve-title" autofocus>
+    <form id="reserve-form" novalidate>
+      <header class="sheet-head">
+        <h2 id="reserve-title">Geschenk reservieren</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Schließen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </header>
+      <div class="sheet-body">
+        <div class="reserve-ask">
+          <p id="reserve-wish" class="reserve-wish"></p>
+          <p id="reserve-intro" class="lead"></p>
+          <div class="field">
+            <label for="r-name">Dein Name</label>
+            <input id="r-name" type="text" autocomplete="name" maxlength="80">
+          </div>
+          <div class="field">
+            <label for="r-email">Deine E-Mail-Adresse</label>
+            <input id="r-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="254">
+          </div>
+        </div>
+        <div class="reserve-done" role="status">
+          <div class="reserve-done-icon" aria-hidden="true">✉️</div>
+          <p class="reserve-done-title">Schau in dein Postfach!</p>
+          <p id="reserve-done-text"></p>
+        </div>
+      </div>
+      <p id="reserve-error" class="form-error" role="alert" hidden></p>
+      <footer class="sheet-foot">
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-ghost reserve-ask-only" data-close>Abbrechen</button>
+        <button type="submit" id="reserve-submit" class="btn btn-primary">Senden</button>
+      </footer>
+    </form>
+  </dialog>
+
   <template id="wish-template">
     <li class="wish">
       <div class="wish-media">
@@ -238,6 +296,10 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M8 7h9v9"/></svg>
           </a>
         </div>
+        <button type="button" class="wish-reserve">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5"/></svg>
+          Geschenk reservieren
+        </button>
       </div>
     </li>
   </template>

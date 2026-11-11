@@ -35,6 +35,7 @@ async function firebaseStore() {
     signIn: (email, password) => fa.signInWithEmailAndPassword(auth, email, password),
     signInGuest: (password) => fa.signInWithEmailAndPassword(auth, guestEmail, password),
     signOut: () => fa.signOut(auth),
+    getToken: async () => (auth.currentUser ? auth.currentUser.getIdToken() : null), // proves the sign-in to our API
     addWish: (wish) =>
       fs.addDoc(wishes, { ...wish, createdAt: fs.serverTimestamp(), updatedAt: fs.serverTimestamp() }),
     updateWish: (id, wish) => fs.updateDoc(fs.doc(wishes, id), { ...wish, updatedAt: fs.serverTimestamp() }),
@@ -66,6 +67,7 @@ async function previewStore() {
     onWishes(cb) { wishSubs.add(cb); cb(copy()); return () => wishSubs.delete(cb); },
     signIn,
     signInGuest: (password) => signIn(guestEmail, password),
+    getToken: async () => null, // preview mode has no server
     async signOut() { user = null; emitUser(); },
     async addWish(wish) {
       await pause();

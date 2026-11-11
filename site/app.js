@@ -1,4 +1,4 @@
-import { guestEmail, lookupUrl, site } from "./config.js";
+import { environment, guestEmail, site } from "./config.js";
 import { connect, isPreview } from "./store.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -37,7 +37,10 @@ const els = {
   deleteBtn: $("#delete-btn"),
 };
 
-const AUTOFILL_HINT = lookupUrl ? els.autofillStatus.textContent : ""; // empty hides the hint
+const autofillAvailable = !isPreview; // needs our server, which preview mode doesn't have
+const AUTOFILL_HINT = autofillAvailable ? els.autofillStatus.textContent : ""; // empty hides the hint
+const RESERVER_KEY = "wishlist-reserver"; // remembers name + e-mail for the next reservation
+const EMAIL_PATTERN = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i; // same rule as the server
 
 const state = {
   store: null,
@@ -49,6 +52,8 @@ const state = {
   lastLookup: "", // link we last tried to auto-fill from
   lookupId: 0, // ignores stale auto-fill results after the form changes
   firstPaint: true,
+  filter: { min: null, max: null }, // price range chosen by the viewer
+  reserving: null, // the wish in the reservation window
 };
 
 // index.html shows a note instead when the browser is too old for the site
@@ -66,6 +71,7 @@ function start() {
       $("#preview-banner").hidden = !isPreview;
       $("#preview-hint").hidden = !isPreview;
       $("#gate-preview-hint").hidden = !isPreview;
+      $("#staging-banner").hidden = isPreview || environment !== "staging";
       store.onUser(onUserChanged);
     })
     .catch((err) => {
@@ -82,7 +88,11 @@ function applySiteSettings() {
   $("#site-subtitle").hidden = !site.subtitle;
   $("#price-currency").textContent = currencySymbol;
   els.price.placeholder = priceForInput(29.99);
-  els.autofillBtn.hidden = !lookupUrl; // no lookup service configured (config.js)
+  els.autofillBtn.hidden = !autofillAvailable;
+  $("#reserve-intro").textContent =
+    `Hier kannst du ein Geschenk für ${site.ownerName} reservieren, ohne dass sie davon erfährt. ` +
+    "Gib deinen Namen und deine E-Mail-Adresse an. Du bekommst dann eine E-Mail, mit der du die Reservierung bestätigst – " +
+    "oder den Hinweis, dass das Geschenk schon reserviert wurde.";
 }
 
 function renderSkeleton() {
@@ -124,6 +134,7 @@ function renderAuth() {
   const editor = Boolean(state.user) && !isGuest(state.user);
   document.body.classList.toggle("is-locked", !state.user);
   document.body.classList.toggle("is-editor", editor);
+  document.body.classList.toggle("is-guest", Boolean(state.user) && !editor); // guests may reserve gifts
   els.editorEmail.textContent = editor ? state.user.email : "";
   $("span", els.authBtn).textContent = editor ? "Abmelden" : "Anmelden";
   els.authBtn.hidden = false;
@@ -133,12 +144,54 @@ function renderWishes() {
   const sorted = [...state.wishes].sort(
     (a, b) => Number(Boolean(b.top)) - Number(Boolean(a.top)) || (b.created ?? 0) - (a.created ?? 0),
   );
+  const { min, max } = state.filter;
+  const filtering = min != null || max != null;
+  const shown = filtering
+    ? sorted.filter((w) => typeof w.price === "number" && (min == null || w.price >= min) && (max == null || w.price <= max))
+    : sorted;
   els.list.classList.toggle("animate", state.firstPaint);
   state.firstPaint = false;
-  els.list.replaceChildren(...sorted.map(wishCard));
+  els.list.replaceChildren(...shown.map(wishCard));
   els.loadError.hidden = true;
   els.empty.hidden = sorted.length > 0;
-  els.count.textContent = sorted.length ? `${sorted.length} ${sorted.length === 1 ? "Wunsch" : "Wünsche"}` : "";
+
+  const n = sorted.length;
+  els.count.textContent = !n ? "" : filtering ? `${shown.length} von ${n} ${n === 1 ? "Wunsch" : "Wünschen"}` : `${n} ${n === 1 ? "Wunsch" : "Wünsche"}`;
+  // a price filter only makes sense with at least two prices to compare
+  $("#filter").hidden = !filtering && sorted.filter((w) => typeof w.price === "number").length < 2;
+  const priceless = sorted.filter((w) => typeof w.price !== "number").length;
+  const note = !filtering
+    ? ""
+    : !shown.length
+      ? "Keine Wünsche in dieser Preisspanne."
+      : priceless
+        ? `${priceless} ${priceless === 1 ? "Wunsch" : "Wünsche"} ohne Preis ${priceless === 1 ? "ist" : "sind"} gerade ausgeblendet.`
+        : "";
+  setNote($("#filter-note"), note);
+}
+
+// ─── Price filter ───────────────────────────────────────────
+let filterTimer;
+function onFilterInput() {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => {
+    const read = (input) => {
+      const value = input.value.trim() ? parsePrice(input.value) : null;
+      return Number.isFinite(value) ? value : null;
+    };
+    let min = read($("#filter-min"));
+    let max = read($("#filter-max"));
+    if (min != null && max != null && min > max) [min, max] = [max, min];
+    state.filter = { min, max };
+    $("#filter-reset").hidden = min == null && max == null;
+    renderWishes();
+  }, 250);
+}
+
+function resetFilter() {
+  $("#filter-min").value = "";
+  $("#filter-max").value = "";
+  onFilterInput();
 }
 
 function wishCard(wish) {
@@ -172,6 +225,9 @@ function wishCard(wish) {
   edit.setAttribute("aria-label", `„${wish.name}“ bearbeiten`);
   del.setAttribute("aria-label", `„${wish.name}“ löschen`);
   edit.addEventListener("click", () => openWishDialog(wish));
+  const reserve = $(".wish-reserve", card);
+  reserve.setAttribute("aria-label", `„${wish.name}“ als Geschenk reservieren`);
+  reserve.addEventListener("click", () => openReserveDialog(wish));
   del.addEventListener("click", () => deleteWish(wish));
   return card;
 }
@@ -188,6 +244,11 @@ function showLoadError({ blocked = false } = {}) {
 function bindEvents() {
   els.authBtn.addEventListener("click", onAuthButton);
   els.loginForm.addEventListener("submit", onSignIn);
+  $("#reserve-form").addEventListener("submit", onReserve);
+  $("#reserve-form").addEventListener("input", () => showError($("#reserve-error"), ""));
+  $("#filter-min").addEventListener("input", onFilterInput);
+  $("#filter-max").addEventListener("input", onFilterInput);
+  $("#filter-reset").addEventListener("click", resetFilter);
 
   document.querySelectorAll("[data-add]").forEach((btn) => btn.addEventListener("click", () => openWishDialog()));
   document.querySelectorAll("[data-close]").forEach((btn) =>
@@ -419,7 +480,7 @@ function loadImage(file) {
 
 // ─── Auto-fill from a shop link ─────────────────────────────
 function maybeAutofill() {
-  if (!lookupUrl) return;
+  if (!autofillAvailable) return;
   const link = normalizeLink(els.link.value);
   if (link && link !== state.lastLookup && !els.name.value.trim()) autofill();
 }
@@ -445,9 +506,11 @@ async function autofill() {
     if (!state.image && info.image) { setImage(info.image); filled.push("Bild"); }
     if (!els.price.value.trim() && info.price != null) { els.price.value = priceForInput(info.price); filled.push("Preis"); }
     const priceTip = els.price.value.trim() ? "" : " Jetzt fehlt nur noch der Preis.";
+    const breakdown = filled.includes("Preis") && info.priceNote ? ` Preis: ${info.priceNote}.` : "";
+    const sold = info.sold ? " Achtung: Der Artikel ist im Shop als verkauft markiert." : "";
     setNote(
       els.autofillStatus,
-      filled.length ? `${joinWords(filled)} ausgefüllt – schau kurz drüber.${priceTip}` : "Es ist schon alles ausgefüllt.",
+      (filled.length ? `${joinWords(filled)} ausgefüllt – schau kurz drüber.${breakdown}${priceTip}` : "Es ist schon alles ausgefüllt.") + sold,
       "ok",
     );
   } catch (err) {
@@ -468,18 +531,105 @@ async function autofill() {
 }
 
 async function lookUpProduct(url) {
-  // Our own lookup service (worker/lookup.js on Cloudflare) reads the shop page:
-  // browsers may not read other websites themselves.
-  const res = await fetch(`${lookupUrl}?url=${encodeURIComponent(url)}`);
-  if (res.status === 429) throw new Error("limit");
-  const data = await res.json().catch(() => null);
-  if (!res.ok || !data?.title) throw new Error(data?.error || `lookup failed (${res.status})`);
+  // Our Worker (worker/lookup.js) reads the shop page — browsers may not read other websites.
+  let data;
+  try {
+    data = await api(`/api/lookup?url=${encodeURIComponent(url)}`);
+  } catch (err) {
+    throw new Error(err.status === 429 ? "limit" : err.message);
+  }
+  if (!data?.title) throw new Error("nothing found");
   return {
     title: data.title,
     description: data.description || "",
     image: data.image?.startsWith("https://") ? data.image : "",
     price: typeof data.price === "number" && data.price > 0 ? data.price : null,
+    priceNote: data.priceNote || "",
+    sold: Boolean(data.sold),
   };
+}
+
+// Calls our own server with the visitor's sign-in, so only wishlist visitors can use it.
+async function api(path, { method = "GET", body } = {}) {
+  const token = await state.store?.getToken();
+  if (!token) throw Object.assign(new Error("not signed in"), { status: 401 });
+  const res = await fetch(path, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw Object.assign(new Error(data?.error || `HTTP ${res.status}`), { status: res.status });
+  return data;
+}
+
+// ─── Reserving a gift (guests) ──────────────────────────────
+// The result (reserved for you / already taken) only goes out by e-mail, so nothing
+// about reservations ever shows up on the page.
+function openReserveDialog(wish) {
+  state.reserving = wish;
+  $("#reserve-form").classList.remove("is-sent");
+  $("#reserve-wish").textContent = `„${wish.name}“`;
+  $("#reserve-submit").textContent = "Senden";
+  showError($("#reserve-error"), "");
+  const saved = readStorage(RESERVER_KEY);
+  $("#r-name").value = saved?.name || "";
+  $("#r-email").value = saved?.email || "";
+  $("#reserve-dialog").showModal();
+}
+
+async function onReserve(e) {
+  e.preventDefault();
+  const form = $("#reserve-form");
+  if (form.classList.contains("is-sent")) return $("#reserve-dialog").close();
+
+  const error = $("#reserve-error");
+  const name = $("#r-name").value.trim();
+  const email = $("#r-email").value.trim();
+  if (!/^\p{L}[\p{L}'’-]{0,39}$/u.test(name.split(/\s+/)[0])) { // same rule as the server
+    showError(error, "Bitte gib deinen Vornamen ein (nur Buchstaben).");
+    return $("#r-name").focus();
+  }
+  if (!EMAIL_PATTERN.test(email)) {
+    showError(error, "Bitte gib eine gültige E-Mail-Adresse ein, z. B. anna@beispiel.de.");
+    return $("#r-email").focus();
+  }
+
+  const button = $("#reserve-submit");
+  setBusy(button, true, "Senden …");
+  try {
+    if (isPreview) await new Promise((r) => setTimeout(r, 500)); // preview mode: no e-mails
+    else await api("/api/reservations", { method: "POST", body: { wishId: state.reserving.id, name, email } });
+    writeStorage(RESERVER_KEY, { name, email });
+    $("#reserve-done-text").textContent =
+      `Wir haben dir eine E-Mail an ${email} geschickt. Darin steht, ob du das Geschenk reservieren kannst – ` +
+      "bestätige die Reservierung dort mit einem Klick. Keine E-Mail bekommen? Schau auch im Spam-Ordner nach.";
+    form.classList.add("is-sent");
+    setBusy(button, false);
+    button.textContent = "Fertig";
+  } catch (err) {
+    console.error(err);
+    setBusy(button, false);
+    showError(error, reserveMessage(err));
+  }
+}
+
+function reserveMessage(err) {
+  switch (err?.status) {
+    case 400: return "Bitte prüfe deinen Namen und deine E-Mail-Adresse.";
+    case 401: return "Deine Anmeldung ist abgelaufen – bitte lade die Seite neu.";
+    case 404: return "Diesen Wunsch gibt es nicht mehr.";
+    case 429: return "Du hast gerade schon einige Anfragen geschickt – bitte versuch es in einer Stunde noch einmal.";
+    case 502: return "Die E-Mail konnte gerade nicht verschickt werden. Bitte versuch es später noch einmal.";
+    default: return "Das hat leider nicht geklappt. Bitte versuch es noch einmal.";
+  }
+}
+
+function readStorage(key) {
+  try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
+}
+function writeStorage(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode — fine */ }
 }
 
 // ─── Saving & deleting ──────────────────────────────────────
