@@ -51,22 +51,28 @@ const state = {
   firstPaint: true,
 };
 
-applySiteSettings();
-renderSkeleton();
-bindEvents();
+// index.html shows a note instead when the browser is too old for the site
+if (!document.documentElement.classList.contains("is-unsupported")) start();
 
-connect()
-  .then((store) => {
-    state.store = store;
-    $("#preview-banner").hidden = !isPreview;
-    $("#preview-hint").hidden = !isPreview;
-    $("#gate-preview-hint").hidden = !isPreview;
-    store.onUser(onUserChanged);
-  })
-  .catch((err) => {
-    console.error(err);
-    showLoadError();
-  });
+function start() {
+  applySiteSettings();
+  renderSkeleton();
+  bindEvents();
+  keepDialogsAboveKeyboard();
+
+  connect()
+    .then((store) => {
+      state.store = store;
+      $("#preview-banner").hidden = !isPreview;
+      $("#preview-hint").hidden = !isPreview;
+      $("#gate-preview-hint").hidden = !isPreview;
+      store.onUser(onUserChanged);
+    })
+    .catch((err) => {
+      console.error(err);
+      showLoadError({ blocked: true }); // Firebase didn't load at all — often a content blocker
+    });
+}
 
 // ─── Rendering ──────────────────────────────────────────────
 function applySiteSettings() {
@@ -169,10 +175,11 @@ function wishCard(wish) {
   return card;
 }
 
-function showLoadError() {
+function showLoadError({ blocked = false } = {}) {
   els.list.replaceChildren();
   els.empty.hidden = true;
   els.loadError.hidden = false;
+  $("#load-error-blocker").hidden = !blocked;
   els.count.textContent = "";
 }
 
@@ -207,6 +214,35 @@ function bindEvents() {
   els.wishForm.addEventListener("submit", onSave);
   els.wishForm.addEventListener("input", () => showError(els.wishError, ""));
   els.deleteBtn.addEventListener("click", () => deleteWish(state.editing));
+}
+
+// ─── On-screen keyboard ─────────────────────────────────────
+// Android Chrome shrinks the page for the keyboard by itself (interactive-widget
+// in index.html). iOS Safari only shrinks the visual viewport, so we measure how
+// much of the screen the keyboard hides and lift the dialog above it (see --kb in style.css).
+function keepDialogsAboveKeyboard() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const root = document.documentElement;
+  const measure = () => {
+    const zoomed = Math.abs(vv.scale - 1) > 0.01; // pinch-zoom also shrinks the visual viewport
+    const hidden = zoomed ? 0 : Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    const visible = Math.round(zoomed ? window.innerHeight : vv.height);
+    root.style.setProperty("--kb", `${hidden}px`);
+    root.style.setProperty("--vvh", `${visible}px`);
+    root.classList.toggle("is-short", visible < 560); // compact dialogs (style.css)
+    root.classList.toggle("is-cramped", visible < 320); // whole dialog scrolls
+  };
+  vv.addEventListener("scroll", measure);
+  vv.addEventListener("resize", () => {
+    measure();
+    // the dialog just got smaller — keep the field being typed in visible
+    const field = document.activeElement;
+    if (field?.matches("input, textarea") && field.closest("dialog[open]")) {
+      requestAnimationFrame(() => field.scrollIntoView({ block: "nearest" }));
+    }
+  });
+  measure();
 }
 
 // ─── Signing in ─────────────────────────────────────────────
@@ -568,7 +604,7 @@ function clip(text, max) {
 }
 
 function joinWords(words) {
-  return words.length < 2 ? words.join("") : `${words.slice(0, -1).join(", ")} und ${words.at(-1)}`;
+  return words.length < 2 ? words.join("") : `${words.slice(0, -1).join(", ")} und ${words[words.length - 1]}`;
 }
 
 function setBusy(btn, busy, label) {

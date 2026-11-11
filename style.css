@@ -19,6 +19,9 @@
   --radius: 18px;
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
   --font-body: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* side padding that also clears the notch of iPhones held sideways */
+  --gutter-l: max(16px, env(safe-area-inset-left));
+  --gutter-r: max(16px, env(safe-area-inset-right));
   color-scheme: light;
 }
 
@@ -92,7 +95,7 @@ button { cursor: pointer; }
 
 /* ─── Header ─────────────────────────────────────────────── */
 .preview-banner {
-  padding: 8px 16px;
+  padding: 8px var(--gutter-r) 8px var(--gutter-l);
   background: var(--gold);
   color: #2a1d08;
   font-size: 14px;
@@ -107,7 +110,7 @@ button { cursor: pointer; }
   max-width: 1152px;
   min-height: 60px;
   margin: 0 auto;
-  padding: 10px 16px;
+  padding: 10px var(--gutter-r) 10px var(--gutter-l);
 }
 
 .editor-status {
@@ -151,7 +154,7 @@ button { cursor: pointer; }
 .is-editor .auth-btn .i-out { display: block; }
 
 .site-header {
-  padding: 12px 16px 44px;
+  padding: 12px var(--gutter-r) 44px var(--gutter-l);
   text-align: center;
 }
 .eyebrow {
@@ -165,10 +168,13 @@ button { cursor: pointer; }
 .site-header h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(2.5rem, 8.5vw, 4.4rem);
+  font-size: clamp(2rem, 8.5vw, 4.4rem);
   font-weight: 600;
   line-height: 1.04;
   letter-spacing: -0.02em;
+  overflow-wrap: break-word;
+  -webkit-hyphens: auto; /* very narrow screens: "Wunsch-liste" instead of running off the edge */
+  hyphens: auto;
   text-wrap: balance;
 }
 .ornament {
@@ -190,7 +196,7 @@ main {
   width: 100%;
   max-width: 1152px;
   margin: 0 auto;
-  padding: 0 16px 64px;
+  padding: 0 var(--gutter-r) 64px var(--gutter-l);
 }
 .is-editor main { padding-bottom: 120px; }
 
@@ -308,6 +314,8 @@ main {
   font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
+  -webkit-hyphens: auto; /* long German words break at syllables (lang="de") */
+  hyphens: auto;
 }
 .wish-desc {
   margin: 0;
@@ -315,6 +323,8 @@ main {
   font-size: 15px;
   white-space: pre-line;
   overflow-wrap: anywhere;
+  -webkit-hyphens: auto;
+  hyphens: auto;
 }
 .wish-foot {
   display: flex;
@@ -370,6 +380,12 @@ main {
 .for-editor, .is-editor .for-guest { display: none; }
 .is-editor .for-editor { display: block; }
 
+/* browser too old (check in index.html): only the note stays visible */
+.is-unsupported .topbar,
+.is-unsupported main > :not(#old-browser),
+.is-unsupported .fab { display: none !important; }
+.is-unsupported #old-browser { display: block !important; }
+
 /* password screen */
 .gate { display: none; max-width: 420px; margin: 4px auto 40px; }
 .is-locked .gate { display: block; }
@@ -379,7 +395,7 @@ main {
 .is-locked .auth-btn { display: none !important; }
 
 .gate-card {
-  padding: 32px 28px 22px;
+  padding: 32px clamp(16px, 6vw, 28px) 22px;
   border: 1px solid var(--line);
   border-radius: 22px;
   background: var(--surface);
@@ -408,7 +424,7 @@ main {
 .gate .hint { margin-top: -10px; }
 .gate .field { margin-bottom: 14px; }
 .gate .form-error { margin: 0 0 14px; color: var(--accent); text-align: left; }
-.btn-block { width: 100%; }
+.btn-block { width: 100%; white-space: normal; }
 .link-btn {
   margin-top: 14px;
   padding: 6px;
@@ -422,7 +438,7 @@ main {
 .link-btn:hover { color: var(--ink); }
 
 .site-footer {
-  padding: 24px 16px 32px;
+  padding: 24px var(--gutter-r) 32px var(--gutter-l);
   color: var(--muted);
   font-size: 14px;
   text-align: center;
@@ -487,14 +503,16 @@ main {
   z-index: 20;
   left: 50%;
   bottom: calc(96px + env(safe-area-inset-bottom));
-  max-width: calc(100% - 32px);
+  width: max-content; /* otherwise left: 50% caps it at half the screen and it wraps early */
+  max-width: min(440px, calc(100% - 32px));
   padding: 11px 20px;
-  border-radius: 999px;
+  border-radius: 22px;
   background: var(--ink);
   color: var(--bg);
   font-size: 15px;
   font-weight: 500;
   text-align: center;
+  text-wrap: balance;
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, 16px);
@@ -503,11 +521,14 @@ main {
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* ─── Dialogs ────────────────────────────────────────────── */
+/* --kb (keyboard height) and --vvh (visible height) are set in app.js while the
+   on-screen keyboard is open, so dialogs move up and shrink to stay above it. */
 dialog.sheet {
+  bottom: var(--kb, 0px);
   width: min(560px, calc(100% - 32px));
   max-width: none;
   max-height: min(90vh, 880px);
-  max-height: min(90dvh, 880px);
+  max-height: min(90dvh, 880px, calc(var(--vvh, 100dvh) - 32px));
   padding: 0;
   overflow: hidden;
   border: 0;
@@ -519,8 +540,10 @@ dialog.sheet {
 dialog.sheet-small { width: min(420px, calc(100% - 32px)); }
 dialog.sheet[open] { display: flex; flex-direction: column; animation: pop .22s cubic-bezier(.2, .8, .2, 1); }
 dialog.sheet::backdrop { background: rgb(28 20 14 / .5); }
+dialog.sheet:focus { outline: none; } /* focused on open (autofocus) so Safari doesn't ring the close button */
 
-.sheet form { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+/* flex-basis must be auto, not 0%: Safari sizes the dialog from it and collapses it to 0 px */
+.sheet form { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
 
 .sheet-head {
   display: flex;
@@ -551,7 +574,7 @@ dialog.sheet::backdrop { background: rgb(28 20 14 / .5); }
 .icon-btn svg { width: 20px; height: 20px; }
 
 .sheet-body {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -559,7 +582,9 @@ dialog.sheet::backdrop { background: rgb(28 20 14 / .5); }
 }
 .sheet-foot {
   display: flex;
+  flex-wrap: wrap; /* narrow screens / large text: the main button moves to its own line */
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   padding: 14px 20px 18px;
   border-top: 1px solid var(--line);
@@ -580,7 +605,7 @@ dialog.sheet::backdrop { background: rgb(28 20 14 / .5); }
   dialog.sheet, dialog.sheet-small {
     width: 100%;
     max-height: 94vh;
-    max-height: 94dvh;
+    max-height: min(94dvh, calc(var(--vvh, 100dvh) - 16px));
     margin: auto 0 0;
     border-radius: 22px 22px 0 0;
   }
@@ -590,6 +615,29 @@ dialog.sheet::backdrop { background: rgb(28 20 14 / .5); }
   .sheet-foot { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
   .form-error { margin-inline: 16px; }
 }
+
+/* Narrow phones (or zoomed text): the × already cancels, so drop the extra
+   "Abbrechen" button and keep the remaining ones on one line. */
+@media (max-width: 389px) {
+  .sheet-foot .btn-ghost[data-close] { display: none; }
+  .sheet-foot .btn { padding-inline: 14px; }
+  .fab { padding-inline: 16px; font-size: 15px; }
+}
+
+/* Little room (keyboard open, phone in landscape): drop the intro text and
+   tighten the spacing so the sign-in fields and button fit above the keyboard. */
+.is-short .sheet .lead { display: none; }
+.is-short .sheet-head { padding-top: 8px; padding-bottom: 6px; }
+.is-short .sheet-body { padding-top: 12px; }
+.is-short .sheet .field { margin-bottom: 12px; }
+.is-short .sheet-foot { padding-top: 8px; padding-bottom: 8px; }
+
+/* Hardly any room (small phone in landscape with the keyboard open): a fixed
+   header and button row would leave no space for the fields, so the whole
+   dialog scrolls as one instead. */
+.is-cramped dialog.sheet[open] { overflow-y: auto; overscroll-behavior: contain; }
+.is-cramped .sheet form,
+.is-cramped .sheet-body { flex: none; overflow: visible; }
 
 /* ─── Form fields ────────────────────────────────────────── */
 .lead { margin: 0 0 18px; color: var(--muted); }
@@ -636,7 +684,7 @@ dialog.sheet::backdrop { background: rgb(28 20 14 / .5); }
 .input-row input { flex: 1; min-width: 0; }
 .input-row .btn { flex: none; border-radius: 12px; }
 
-.photo { display: flex; align-items: center; gap: 16px; }
+.photo { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
 .photo-preview {
   display: grid;
   flex: none;

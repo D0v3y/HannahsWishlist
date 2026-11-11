@@ -2,9 +2,10 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>Hannahs Wunschliste</title>
   <meta name="description" content="Weihnachtswünsche">
+  <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f7f1e8" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#111916" media="(prefers-color-scheme: dark)">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎁</text></svg>">
@@ -65,7 +66,30 @@
 
     <div id="load-error" class="empty" hidden>
       <p>Die Wunschliste konnte gerade nicht geladen werden. Bitte versuch es gleich noch einmal.</p>
+      <p id="load-error-blocker" hidden>Falls du einen Werbe- oder Inhaltsblocker nutzt, schalte ihn für diese Seite bitte aus.</p>
     </div>
+
+    <div id="old-browser" class="empty" hidden>
+      <p>Dein Browser ist leider zu alt für diese Wunschliste. Bitte öffne den Link auf einem anderen Gerät oder bring dein Gerät auf den neuesten Stand (iPhone/iPad: mindestens iOS 15.4).</p>
+    </div>
+    <script>
+      // Browsers from before ~2022 (e.g. iPads stuck on iOS 12) can't run this site.
+      // Show a clear note instead of an empty page. Old-style JavaScript on purpose.
+      (function () {
+        var ok = false;
+        try {
+          ok = typeof HTMLDialogElement === "function" &&
+            typeof HTMLDialogElement.prototype.showModal === "function" &&
+            !!window.CSS && CSS.supports("aspect-ratio", "1") &&
+            "noModule" in document.createElement("script") &&
+            Function("return ({})?.a ?? 1")() === 1;
+        } catch (e) {}
+        if (!ok) {
+          document.documentElement.className += " is-unsupported";
+          document.getElementById("old-browser").hidden = false;
+        }
+      })();
+    </script>
   </main>
 
   <footer class="site-footer">Mit Liebe gemacht ♥</footer>
@@ -78,7 +102,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <!-- Sign in -->
-  <dialog id="login-dialog" class="sheet sheet-small" aria-labelledby="login-title">
+  <dialog id="login-dialog" class="sheet sheet-small" aria-labelledby="login-title" autofocus>
     <form id="login-form" novalidate>
       <header class="sheet-head">
         <h2 id="login-title">Anmelden</h2>
@@ -108,7 +132,7 @@
   </dialog>
 
   <!-- Add / edit a wish -->
-  <dialog id="wish-dialog" class="sheet" aria-labelledby="wish-title">
+  <dialog id="wish-dialog" class="sheet" aria-labelledby="wish-title" autofocus>
     <form id="wish-form" novalidate>
       <header class="sheet-head">
         <h2 id="wish-title">Wunsch hinzufügen</h2>
@@ -134,7 +158,7 @@
           <span class="label">Bild</span>
           <div class="photo">
             <div id="photo-preview" class="photo-preview">
-              <img alt="" hidden>
+              <img alt="" referrerpolicy="no-referrer" hidden>
               <span>Noch kein Bild</span>
             </div>
             <div class="photo-actions">
@@ -191,7 +215,7 @@
     <li class="wish">
       <div class="wish-media">
         <a class="media-link" tabindex="-1" aria-hidden="true" target="_blank" rel="noopener noreferrer">
-          <img alt="" loading="lazy" decoding="async">
+          <img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
           <svg class="wish-placeholder" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5"/></svg>
         </a>
         <span class="badge" hidden>★ Top-Wunsch</span>
