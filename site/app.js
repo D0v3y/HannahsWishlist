@@ -537,7 +537,9 @@ async function lookUpProduct(url) {
     data = await api(`/api/lookup?url=${encodeURIComponent(url)}`);
   } catch (err) {
     // 502: the shop turned our server away (e.g. Vinted), 422: it found nothing readable.
-    if (err.status !== 502 && err.status !== 422) throw new Error(err.status === 429 ? "limit" : err.message);
+    // If the Worker already went through microlink with its own key, there's nothing left to try.
+    const retry = (err.status === 502 || err.status === 422) && !err.data?.microlinkTried;
+    if (!retry) throw new Error(err.status === 429 ? "limit" : err.message);
     data = await lookUpViaMicrolink(url);
   }
   if (!data?.title) throw new Error("nothing found");
@@ -551,9 +553,9 @@ async function lookUpProduct(url) {
   };
 }
 
-// Fallback: microlink.io fetches the page through its own servers, which some shops let in
-// when they block ours. It only hands over the raw page — our Worker reads it like any other,
-// so prices and clean-up work the same. Free without a key: a handful of lookups a day.
+// Fallback when the Worker has no microlink key of its own: microlink.io fetches the page
+// through its own servers, which some shops let in when they block ours. It only hands over
+// the raw page — our Worker reads it like any other. Keyless: a handful of lookups a day.
 async function lookUpViaMicrolink(url) {
   const query = new URLSearchParams({ url, "data.page.selector": "html", "data.page.attr": "outerHTML" });
   const res = await fetch(`https://api.microlink.io/?${query}`);
@@ -581,7 +583,7 @@ async function api(path, { method = "GET", body } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw Object.assign(new Error(data?.error || `HTTP ${res.status}`), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(data?.error || `HTTP ${res.status}`), { status: res.status, data });
   return data;
 }
 

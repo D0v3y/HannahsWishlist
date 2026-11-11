@@ -47,7 +47,8 @@ Restrict the browser API key (Google Cloud → APIs & Services → Credentials) 
 - GitHub repository secret `CLOUDFLARE_API_TOKEN` (template "Edit Cloudflare Workers" + D1 Edit).
 - D1 databases `wunschliste` and `wunschliste-staging` (IDs in `wrangler.toml`).
 - Secrets on each Worker (Settings → Variables and Secrets → Add → type **Secret**):
-  `SMTP_USER` (Gmail address) and `SMTP_PASS` (its Google app password).
+  `SMTP_USER` (Gmail address) and `SMTP_PASS` (its Google app password); optionally `MICROLINK_KEY`
+  (see *Ausfüllen* below).
 - Email Routing for `support@hannahswunschliste.com` → your inbox.
 
 ## Working on it
@@ -66,6 +67,11 @@ stack use `npx wrangler dev`, which serves site + API at http://localhost:8787).
 - **Reservations:** only the guest account can reserve (not Hannah's). Max. 5 e-mails per address and 20 per
   network per hour. Unconfirmed reservations are deleted after a week, cancelled ones after a month.
   To clear one by hand: Cloudflare → D1 → `wunschliste` → Console.
+- **Ausfüllen:** the Worker reads the shop page itself. Some shops (e.g. Vinted) turn Cloudflare's servers away;
+  then microlink.io fetches the page instead and the Worker reads it the same way. With the secret
+  `MICROLINK_KEY` (free account at microlink.io, 25 lookups a day) the Worker does this itself; without it, the
+  visitor's browser uses microlink's keyless service (a few lookups a day per network). microlink is only asked
+  when a shop blocks the Worker.
 - **Old address:** `d0v3y.github.io/HannahsWishlist` forwards to the new one (root `index.html`).
 - The values in `site/config.js` and `wrangler.toml` aren't secret; the protection is the Firestore rules,
   the sign-in check in the Worker and the API key restrictions.

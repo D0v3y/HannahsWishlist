@@ -5,8 +5,9 @@
 #
 # Secrets — set in Cloudflare → Workers & Pages → <worker> → Settings → Variables and Secrets,
 # never in this file:
-#   SMTP_USER   Gmail address that sends the reservation e-mails
-#   SMTP_PASS   its 16-letter Google app password
+#   SMTP_USER      Gmail address that sends the reservation e-mails
+#   SMTP_PASS      its 16-letter Google app password
+#   MICROLINK_KEY  optional: microlink.io API key, for shops that turn the Worker away (e.g. Vinted)
 name = "wunschliste"
 main = "worker/index.js"
 compatibility_date = "2025-06-01"

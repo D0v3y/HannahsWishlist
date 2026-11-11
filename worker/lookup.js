@@ -2,6 +2,11 @@
 // POST /api/lookup { url, html, preview } — the same, for a page the site fetched itself
 // Browsers may not read other websites, so the Worker fetches the shop page and
 // reads name, picture and price from it. Only for people signed in to the wishlist.
+//
+// Some shops (e.g. Vinted) turn Cloudflare's servers away. With a microlink key
+// (secret MICROLINK_KEY — free account, 25 lookups a day) the Worker then fetches the
+// page through microlink. Without a key, the site tries microlink's keyless service
+// from the visitor's browser and POSTs the page here.
 import { verifyUser } from "./auth.js";
 import { json } from "./http.js";
 import { isVestiaire, vestiaireDetails } from "./vestiaire.js";
@@ -19,50 +24,78 @@ const JUNK_TITLE = /^(page not found|not found|seite nicht gefunden|404|403|acce
 
 export async function handleLookup(request, env) {
   if (!(await verifyUser(request, env))) return json({ error: "not signed in" }, 401);
-  if (request.method === "POST") return readSentPage(request, env);
+
+  if (request.method === "POST") {
+    const body = await request.json().catch(() => null);
+    const target = shopUrl(body?.url, env);
+    const html = typeof body?.html === "string" ? body.html : null;
+    if (!target || html === null || html.length > 10_000_000) return json({ error: "invalid input" }, 400); // Amazon pages are ~3 MB
+    return reply(await readHtml(target, html, body.preview));
+  }
 
   const target = shopUrl(new URL(request.url).searchParams.get("url"), env);
   if (!target) return json({ error: "invalid url" }, 400);
 
+  const direct = await readDirectly(target);
+  if (direct.result || !env.MICROLINK_KEY) return reply(direct);
+  // The shop turned us away (or showed nothing readable): once more through microlink.
+  return reply({ ...(await readViaMicrolink(target, env)), microlinkTried: true });
+}
+
+// { result } on success, otherwise { error, status } — the site tells the visitor what happened.
+function reply({ result, error, status, microlinkTried }) {
+  if (result) return json(result);
+  return json(microlinkTried ? { error, microlinkTried } : { error }, status);
+}
+
+async function readDirectly(target) {
   let response;
   try {
     response = await fetch(target, { headers: BROWSER_HEADERS, redirect: "follow", signal: AbortSignal.timeout(12000) });
   } catch {
-    return json({ error: "shop not reachable" }, 502);
+    return { error: "shop not reachable", status: 502 };
   }
   if (!response.ok || !(response.headers.get("content-type") || "").includes("html")) {
-    return json({ error: `shop answered ${response.status}` }, 502);
+    return { error: `shop answered ${response.status}`, status: 502 };
   }
-
   const found = await readPage(response, { vestiaire: isVestiaire(response.url) });
-  if (found.blocked) return json({ error: "blocked by shop" }, 502);
+  if (found.blocked) return { error: "blocked by shop", status: 502 };
   const result = summarize(found, response.url);
-  if (!result.title) return json({ error: "nothing found" }, 422);
-  return json(result);
+  return result.title ? { result } : { error: "nothing found", status: 422 };
 }
 
-// Fallback for shops that turn our server away (e.g. Vinted answers Cloudflare with 429):
-// the site fetches the page through microlink and sends it here, so it's read exactly
-// like a page we fetched ourselves. `preview` is microlink's own summary, used only if
-// the page itself yields nothing.
-async function readSentPage(request, env) {
-  const body = await request.json().catch(() => null);
-  const target = shopUrl(body?.url, env);
-  const html = typeof body?.html === "string" ? body.html : "";
-  if (!target || html.length > 10_000_000) return json({ error: "invalid input" }, 400); // Amazon pages are ~3 MB
+// microlink only hands over the raw page; it's read with the same rules as any other.
+async function readViaMicrolink(target, env) {
+  const query = new URLSearchParams({ url: target, "data.page.selector": "html", "data.page.attr": "outerHTML" });
+  let response;
+  try {
+    response = await fetch(`${env.MICROLINK_URL || "https://pro.microlink.io"}/?${query}`, { // overridable only for local tests
+      headers: { "x-api-key": env.MICROLINK_KEY },
+      signal: AbortSignal.timeout(25000),
+    });
+  } catch {
+    return { error: "microlink not reachable", status: 502 };
+  }
+  if (response.status === 429) return { error: "limit", status: 429 };
+  const body = await response.json().catch(() => null);
+  if (!response.ok || body?.status !== "success") return { error: `microlink: ${body?.message || response.status}`, status: 502 };
+  const d = body.data || {};
+  return readHtml(target, typeof d.page === "string" ? d.page : "", { title: d.title, description: d.description, image: d.image?.url });
+}
 
+// Reads a page we didn't fetch ourselves. `preview` is microlink's own summary, used only
+// if the page itself yields nothing.
+async function readHtml(target, html, preview = {}) {
   const found = await readPage(new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } }), { vestiaire: isVestiaire(target) });
-  if (found.blocked) return json({ error: "blocked by shop" }, 502);
+  if (found.blocked) return { error: "blocked by shop", status: 502 };
   const result = summarize(found, target);
-  const preview = body.preview || {};
-  if (!result.title && typeof preview.title === "string") {
+  if (!result.title && typeof preview?.title === "string") {
     result.title = cleanTitle(preview.title);
     if (JUNK_TITLE.test(result.title)) result.title = "";
     result.description ||= cleanDescription(String(preview.description || ""), preview.title);
     result.image ||= absoluteUrl(typeof preview.image === "string" ? preview.image : null, target);
   }
-  if (!result.title) return json({ error: "nothing found" }, 422);
-  return json(result);
+  return result.title ? { result } : { error: "nothing found", status: 422 };
 }
 
 // Only public http(s) pages. ALLOW_LOCAL is only set when testing on your own computer.
