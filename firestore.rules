@@ -1,0 +1,38 @@
+rules_version = '2';
+
+// Paste this into Firebase console → Firestore Database → Rules, then click Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Exact e-mail addresses (lower-case) of the accounts under Authentication → Users.
+    function signedInAs(emails) {
+      return request.auth != null && request.auth.token.email in emails;
+    }
+
+    // May add, edit and delete wishes.
+    function isEditor() {
+      return signedInAs(['hannah@example.com', 'you@example.com']);
+    }
+
+    // The shared guest account behind the site password (same as guestEmail in config.js).
+    function isGuest() {
+      return signedInAs(['gast@example.com']);
+    }
+
+    function isValidWish(w) {
+      return w.keys().hasOnly(['name', 'description', 'price', 'link', 'image', 'top', 'createdAt', 'updatedAt'])
+        && w.name is string && w.name.size() > 0 && w.name.size() <= 200
+        && w.description is string && w.description.size() <= 1000
+        && (w.price == null || w.price is number)
+        && w.link is string && w.link.size() <= 2000
+        && w.image is string && w.image.size() <= 900000
+        && w.top is bool;
+    }
+
+    match /wishes/{wishId} {
+      allow read: if isGuest() || isEditor();  // nobody without the password
+      allow create, update: if isEditor() && isValidWish(request.resource.data);
+      allow delete: if isEditor();
+    }
+  }
+}
