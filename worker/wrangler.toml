@@ -1,0 +1,5 @@
+# Only needed when deploying with the wrangler command line tool.
+# Deploying by pasting lookup.js into the Cloudflare dashboard works too (see README).
+name = "wunschliste-lookup"
+main = "lookup.js"
+compatibility_date = "2025-06-01"

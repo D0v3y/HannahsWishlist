@@ -1,4 +1,4 @@
-import { guestEmail, site } from "./config.js";
+import { guestEmail, lookupUrl, site } from "./config.js";
 import { connect, isPreview } from "./store.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -37,7 +37,7 @@ const els = {
   deleteBtn: $("#delete-btn"),
 };
 
-const AUTOFILL_HINT = els.autofillStatus.textContent;
+const AUTOFILL_HINT = lookupUrl ? els.autofillStatus.textContent : ""; // empty hides the hint
 
 const state = {
   store: null,
@@ -82,6 +82,7 @@ function applySiteSettings() {
   $("#site-subtitle").hidden = !site.subtitle;
   $("#price-currency").textContent = currencySymbol;
   els.price.placeholder = priceForInput(29.99);
+  els.autofillBtn.hidden = !lookupUrl; // no lookup service configured (config.js)
 }
 
 function renderSkeleton() {
@@ -418,6 +419,7 @@ function loadImage(file) {
 
 // ─── Auto-fill from a shop link ─────────────────────────────
 function maybeAutofill() {
+  if (!lookupUrl) return;
   const link = normalizeLink(els.link.value);
   if (link && link !== state.lastLookup && !els.name.value.trim()) autofill();
 }
@@ -441,6 +443,7 @@ async function autofill() {
     if (!els.name.value.trim()) { els.name.value = info.title; filled.push("Name"); }
     if (!els.desc.value.trim() && info.description) { els.desc.value = info.description; filled.push("Beschreibung"); }
     if (!state.image && info.image) { setImage(info.image); filled.push("Bild"); }
+    if (!els.price.value.trim() && info.price != null) { els.price.value = priceForInput(info.price); filled.push("Preis"); }
     const priceTip = els.price.value.trim() ? "" : " Jetzt fehlt nur noch der Preis.";
     setNote(
       els.autofillStatus,
@@ -454,7 +457,9 @@ async function autofill() {
       els.autofillStatus,
       err.message === "limit"
         ? "Das automatische Ausfüllen macht für heute Pause – bitte trag die Angaben selbst ein."
-        : "Diese Shop-Seite konnte nicht gelesen werden – bitte trag die Angaben selbst ein.",
+        : err.message === "blocked by shop"
+          ? "Dieser Shop lässt sich leider nicht automatisch auslesen – bitte trag die Angaben selbst ein."
+          : "Diese Shop-Seite konnte nicht gelesen werden – bitte trag die Angaben selbst ein.",
       "err",
     );
   } finally {
@@ -462,32 +467,19 @@ async function autofill() {
   }
 }
 
-const JUNK_TITLE = /^(page not found|not found|seite nicht gefunden|404|403|access denied|zugriff verweigert|robot check|just a moment|attention required|amazon(\.[a-z]+)+)\b/i;
-
 async function lookUpProduct(url) {
-  // microlink.io reads the page's preview data (the same thing chat apps show for links).
-  const res = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
+  // Our own lookup service (worker/lookup.js on Cloudflare) reads the shop page:
+  // browsers may not read other websites themselves.
+  const res = await fetch(`${lookupUrl}?url=${encodeURIComponent(url)}`);
   if (res.status === 429) throw new Error("limit");
-  const json = await res.json().catch(() => null);
-  if (!res.ok || json?.status !== "success") throw new Error(`lookup failed (${res.status})`);
-
-  const data = json.data ?? {};
-  const title = cleanTitle(data.title);
-  if (!title || JUNK_TITLE.test(title)) throw new Error(`unhelpful title: ${data.title}`);
-  const image = data.image?.url;
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.title) throw new Error(data?.error || `lookup failed (${res.status})`);
   return {
-    title,
-    description: clip(data.description ?? "", 280),
-    image: image?.startsWith("https://") ? image : "",
+    title: data.title,
+    description: data.description || "",
+    image: data.image?.startsWith("https://") ? data.image : "",
+    price: typeof data.price === "number" && data.price > 0 ? data.price : null,
   };
-}
-
-function cleanTitle(title = "") {
-  return title
-    .replace(/^amazon(\.[a-z]+)+\s*:\s*/i, "") // "Amazon.de: Product name"
-    .split(/\s+[|•·]\s+/)[0] // "Product name | Shop name"
-    .trim()
-    .slice(0, 200);
 }
 
 // ─── Saving & deleting ──────────────────────────────────────
@@ -562,7 +554,9 @@ function invalid(message, input) {
 
 // "" when empty, null when it isn't a usable web link, otherwise the full URL.
 function normalizeLink(raw) {
-  const text = raw.trim();
+  let text = raw.trim();
+  const inside = text.match(/https?:\/\/[^\s<>"]+/i); // shop apps share "Product name https://…"
+  if (inside && inside[0] !== text) text = inside[0];
   if (!text) return "";
   try {
     const url = new URL(/^[a-z][a-z\d+.-]*:/i.test(text) ? text : `https://${text}`);

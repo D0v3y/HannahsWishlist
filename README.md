@@ -4,13 +4,15 @@ A password-protected Christmas wishlist (German UI) that runs on GitHub Pages. F
 enter the shared password once, and can browse the wishes. Hannah signs in with her own account and can add,
 edit and remove wishes right on the page.
 
-- **Adding a wish:** tap *Wunsch hinzufügen* → paste a shop link → name, description and picture are filled in
-  automatically (when the shop allows it) → add the price → *Hinzufügen*.
+- **Adding a wish:** tap *Wunsch hinzufügen* → paste a shop link (or the text the *Teilen* button of a shop app
+  copies) → name, picture and price are filled in automatically when the shop allows it → *Hinzufügen*.
+  This needs the small lookup service from step 4 below; without it, everything is typed in by hand.
 - Photos can also be uploaded straight from the phone; they're shrunk automatically.
 - *Top-Wunsch* puts a wish at the top with a little badge.
 
 Files: `index.html` (page), `style.css` (look), `app.js` (behaviour), `store.js` (saving),
-`config.js` (**the only file you need to edit**), `firestore.rules` (who may read and edit).
+`config.js` (**the only file you need to edit**), `firestore.rules` (who may read and edit),
+`worker/lookup.js` (the lookup service behind *Ausfüllen*).
 
 ---
 
@@ -66,6 +68,23 @@ Reload the page — the yellow preview banner disappears and the list is now liv
   once the list is open) and sign in with her own account. The browser remembers it.
   Tip: *Teilen → Zum Home-Bildschirm* makes it feel like an app.
 
+### 4. Lookup service for *Ausfüllen* (optional, free)
+
+Browsers may not read other websites, so a tiny service of your own fetches the shop page and hands
+name, picture and price to the form. It runs on Cloudflare Workers (free plan: 100,000 lookups a day).
+
+1. Create a free account at <https://dash.cloudflare.com/sign-up>.
+2. **Workers & Pages → Create → Create Worker** (the "Hello World" starter), name it e.g. `wunschliste-lookup`,
+   click **Deploy**.
+3. Click **Edit code**, replace everything with the contents of [`worker/lookup.js`](worker/lookup.js),
+   click **Deploy** again.
+4. Copy the Worker's address (`https://wunschliste-lookup.<your-name>.workers.dev`) into `lookupUrl` in
+   [`config.js`](config.js) and push. The *Ausfüllen* button appears.
+
+The service only answers requests from the addresses in `ALLOWED_ORIGINS` at the top of `worker/lookup.js`
+(your GitHub Pages site and `localhost:5173` for testing) — add yours there if the site moves.
+Prefer the command line? `cd worker && npx wrangler deploy` does the same.
+
 ---
 
 ## Good to know
@@ -76,8 +95,8 @@ Reload the page — the yellow preview banner disappears and the list is now liv
   Firebase also slows down repeated wrong password attempts.
 - **Changing the shared password:** in Authentication → Users, delete the guest account and add it again with the
   same e-mail and a new password. Devices that were signed in with the old one lose access within about an hour.
-- **Auto-fill** uses the free [microlink.io](https://microlink.io) preview service — no key needed, but it allows only
-  a handful of lookups per day per network, and some shops (Amazon especially) block it. When it can't help,
-  the form simply asks to fill in the details by hand.
+- **Ausfüllen** reads the price from Amazon's price fields or the standard product data most shops include for
+  search engines. Some shops block automated visitors (Amazon at times shows a robot check); then the form simply
+  asks to fill in the details by hand. Links go only to your own service — no third party sees them.
 - **Pictures** are resized in the browser (max. 1000 px) and saved together with the wish, so no paid file storage is
   needed. Firestore's free tier (1 GB, 50,000 reads/day) is far more than a wishlist will ever use.
