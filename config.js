@@ -21,10 +21,10 @@ export const guestEmail = "gast@example.com";
 // These values are not secret — they only identify your project.
 // What protects the list is the access rules in firestore.rules.
 export const firebaseConfig = {
-  apiKey: "PASTE_YOUR_API_KEY",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: "",
+  apiKey: "AIzaSyAXMzhzgDo8eJa08ZoERz-u4SAotVjkcP4",
+  authDomain: "hannahs-wishlist.firebaseapp.com",
+  projectId: "hannahs-wishlist",
+  storageBucket: "hannahs-wishlist.firebasestorage.app",
+  messagingSenderId: "219101156897",
+  appId: "1:219101156897:web:6caaa7b4e8ee5587bdf560",
 };
