@@ -769,13 +769,25 @@ async function onSave(e) {
 }
 
 // One of the personal messages from config.js, never the same one twice in a row.
+// Rarer messages (see messageRarity there) get a smaller share of the draw.
 let lastAddedMessage = "";
 function addedMessage() {
-  const all = (site.addedMessages || []).filter((m) => typeof m === "string" && m.trim());
+  const all = (site.addedMessages || [])
+    .map((m) => (typeof m === "string" ? { text: m } : m))
+    .filter((m) => typeof m?.text === "string" && m.text.trim())
+    .map((m) => {
+      // a rarity is a name from messageRarity or simply a number; anything else counts as normal
+      const chance = typeof m.rarity === "number" ? m.rarity : (site.messageRarity?.[m.rarity] ?? 1);
+      return { text: m.text, chance: chance > 0 ? chance : 0 };
+    })
+    .filter((m) => m.chance > 0);
   if (!all.length) return "Zur Wunschliste hinzugefügt ✨";
-  const fresh = all.length > 1 ? all.filter((m) => m !== lastAddedMessage) : all;
-  lastAddedMessage = fresh[Math.floor(Math.random() * fresh.length)];
-  return lastAddedMessage;
+  const fresh = all.filter((m) => m.text !== lastAddedMessage);
+  const pool = fresh.length ? fresh : all;
+  let ticket = Math.random() * pool.reduce((sum, m) => sum + m.chance, 0);
+  const drawn = pool.find((m) => (ticket -= m.chance) < 0) || pool[pool.length - 1];
+  lastAddedMessage = drawn.text;
+  return drawn.text;
 }
 
 async function deleteWish(wish) {

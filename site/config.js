@@ -5,10 +5,23 @@ export const site = {
   ownerName: "Hannah", // used in texts like "ein Geschenk für Hannah"
   supportEmail: "support@hannahswunschliste.com", // shown at the bottom of the page ("" hides the line)
   // Little messages for Hannah: one of them, picked at random, pops up each time she adds a wish.
-  // One message per line, in quotes, with a comma at the end. Add as many as you like.
+  // One message per line, with a comma at the end. Add as many as you like.
+  //   "Text"                                   a normal message
+  //   { text: "Text", rarity: "selten" }       shows up less often — see messageRarity below
   addedMessages: [
     "Zur Wunschliste hinzugefügt ✨",
+    "Gute Wahl Popi <3",
+    "Das hätte ich mir auch gewünscht!😮",
+    "Darf ich das dann auch benutzen?👉🏻👈🏻",
+    
   ],
+  // How likely a message of each rarity is, compared with a normal one (1).
+  // 0.25 = a quarter as often. Rename these, change the numbers or add your own.
+  messageRarity: {
+    selten: 0.25,
+    "sehr selten": 0.08,
+    legendär: 0.02,
+  },
   currency: "EUR", // ISO code: "EUR", "USD", "GBP", …
   locale: "de-DE", // number format: "de-DE" → 29,99 €  ·  "en-US" → €29.99
 };
