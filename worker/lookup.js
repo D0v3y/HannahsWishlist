@@ -83,7 +83,7 @@ async function readDirectly(target) {
   if (!response.ok || !(response.headers.get("content-type") || "").includes("html")) {
     return { error: `shop answered ${response.status}`, status: 502 };
   }
-  const found = await readPage(response, { vestiaire: isVestiaire(response.url) });
+  const found = await readPage(response, response.url);
   if (found.blocked) return { error: "blocked by shop", status: 502 };
   const result = summarize(found, response.url);
   return result.title ? { result } : { error: "nothing found", status: 422 };
@@ -111,7 +111,7 @@ async function readViaMicrolink(target, env) {
 // Reads a page we didn't fetch ourselves. `preview` is microlink's own summary, used only
 // if the page itself yields nothing.
 async function readHtml(target, html, preview = {}) {
-  const found = await readPage(new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } }), { vestiaire: isVestiaire(target) });
+  const found = await readPage(new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } }), target);
   if (found.blocked) return { error: "blocked by shop", status: 502 };
   const result = summarize(found, target);
   if (!result.title && typeof preview?.title === "string") {
@@ -139,10 +139,10 @@ function shopUrl(raw, env) {
 }
 
 // ─── Reading the page ───────────────────────────────────────
-async function readPage(response, { vestiaire = false } = {}) {
+async function readPage(response, pageUrl) {
   const f = {
     meta: {}, title: null, productTitle: null, ld: [],
-    amzValue: null, amzWhole: null, amzFraction: null, landingImage: null, nextData: null, blocked: false,
+    amzValue: null, amzWhole: null, amzFraction: null, landingImage: null, nextData: null, vintedTotal: null, blocked: false,
   };
   // collects the text of the first element that matches (later matches are ignored)
   const firstText = (key) => {
@@ -181,7 +181,9 @@ async function readPage(response, { vestiaire = false } = {}) {
   for (const box of AMAZON_PRICE_BOXES) {
     rewriter = rewriter.on(`${box} .a-price-whole`, whole).on(`${box} .a-price-fraction`, fraction);
   }
-  if (vestiaire) rewriter = rewriter.on("script#__NEXT_DATA__", firstText("nextData"));
+  if (isVestiaire(pageUrl)) rewriter = rewriter.on("script#__NEXT_DATA__", firstText("nextData"));
+  // Vinted: the price incl. its buyer protection fee, as shown under the item price ("9,00 € inkl. Vinted-Gebühr")
+  if (isVinted(pageUrl)) rewriter = rewriter.on('[data-testid="total-combined-price"]', firstText("vintedTotal"));
   await rewriter.transform(response).arrayBuffer();
   return f;
 }
@@ -206,8 +208,19 @@ function summarize(f, pageUrl) {
     if (vc.price) Object.assign(result, { price: vc.price, priceNote: vc.priceNote });
     result.sold = vc.sold;
   }
+  const vintedTotal = f.vintedTotal && parsePrice(decode(f.vintedTotal));
+  if (vintedTotal > 0) {
+    const item = result.price; // the item price on its own, from the product data
+    result.priceNote = item > 0 && item < vintedTotal
+      ? `${euro.format(item)} + ${euro.format(Math.round((vintedTotal - item) * 100) / 100)} Vinted-Gebühr`
+      : "inkl. Vinted-Gebühr";
+    result.price = Math.round(vintedTotal * 100) / 100;
+  }
   return result;
 }
+
+const isVinted = (url) => /(^|\.)vinted\.[a-z.]+$/i.test(new URL(url).hostname);
+const euro = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
 
 // ─── Price ──────────────────────────────────────────────────
 function findPrice(f) {
