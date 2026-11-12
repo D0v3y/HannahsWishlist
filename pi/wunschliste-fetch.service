@@ -1,0 +1,29 @@
+# Home helper for "Ausfüllen" (see pi/fetch.py) — install to /etc/systemd/system/
+[Unit]
+Description=Wunschliste home helper (fetches shop pages for the lookup Worker)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+DynamicUser=yes
+EnvironmentFile=/etc/wunschliste-fetch.env
+ExecStart=/usr/bin/python3 /opt/wunschliste-fetch/fetch.py
+Restart=always
+RestartSec=5
+
+# It only needs to talk to the internet — lock everything else away.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

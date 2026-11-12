@@ -68,10 +68,33 @@ stack use `npx wrangler dev`, which serves site + API at http://localhost:8787).
   network per hour. Unconfirmed reservations are deleted after a week, cancelled ones after a month.
   To clear one by hand: Cloudflare → D1 → `wunschliste` → Console.
 - **Ausfüllen:** the Worker reads the shop page itself. Some shops (e.g. Vinted) turn Cloudflare's servers away;
-  then microlink.io fetches the page instead and the Worker reads it the same way. With the secret
-  `MICROLINK_KEY` (free account at microlink.io, 25 lookups a day) the Worker does this itself; without it, the
-  visitor's browser uses microlink's keyless service (a few lookups a day per network). microlink is only asked
-  when a shop blocks the Worker.
+  then, in this order: the **home helper on the Raspberry Pi** (below) fetches it from the home connection;
+  **microlink.io** with the secret `MICROLINK_KEY` (free account, 25 lookups a day); without a key, the visitor's
+  browser uses microlink's keyless service (a few a day per network). Each page is read with the same rules.
+
+## Home helper on the Raspberry Pi
+
+[`pi/fetch.py`](pi/fetch.py) — a small service (Python standard library only) that fetches shop pages from the
+home connection for the Worker. It only listens on `127.0.0.1:8790`; a **Cloudflare Tunnel** connects it to
+`https://fetch.hannahswunschliste.com`. It needs the key from `/etc/wunschliste-fetch.env` (header `X-Fetch-Key`)
+and only fetches public internet addresses — never the router or anything else at home, also not via redirects.
+
+Installed on the Pi (`blue-raspberry`, Raspberry Pi OS Lite):
+
+```bash
+sudo install -D -m 644 pi/fetch.py /opt/wunschliste-fetch/fetch.py
+sudo install -m 644 pi/wunschliste-fetch.service /etc/systemd/system/
+printf "FETCH_KEY=%s\n" "$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" | sudo tee /etc/wunschliste-fetch.env >/dev/null
+sudo chmod 600 /etc/wunschliste-fetch.env
+sudo systemctl enable --now wunschliste-fetch
+```
+
+Then: Cloudflare → Zero Trust → Networks → Tunnels → create a tunnel, run its `cloudflared service install …`
+command on the Pi, and add the public hostname `fetch.hannahswunschliste.com` → `http://localhost:8790`.
+Put the same key into both Workers as the secret `HOME_FETCH_KEY` (`HOME_FETCH_URL` is in `wrangler.toml`).
+
+Check: `systemctl status wunschliste-fetch` · log: `journalctl -u wunschliste-fetch` (shop names only).
+If the Pi is off, lookups simply fall back to microlink.
 - **Old address:** `d0v3y.github.io/HannahsWishlist` forwards to the new one (root `index.html`).
 - The values in `site/config.js` and `wrangler.toml` aren't secret; the protection is the Firestore rules,
   the sign-in check in the Worker and the API key restrictions.

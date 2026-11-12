@@ -3,10 +3,12 @@
 // Browsers may not read other websites, so the Worker fetches the shop page and
 // reads name, picture and price from it. Only for people signed in to the wishlist.
 //
-// Some shops (e.g. Vinted) turn Cloudflare's servers away. With a microlink key
-// (secret MICROLINK_KEY — free account, 25 lookups a day) the Worker then fetches the
-// page through microlink. Without a key, the site tries microlink's keyless service
-// from the visitor's browser and POSTs the page here.
+// Some shops (e.g. Vinted) turn Cloudflare's servers away. Then, in this order:
+//  1. the home helper on the Raspberry Pi (pi/fetch.py, via a Cloudflare Tunnel) fetches
+//     the page from a home connection — HOME_FETCH_URL + secret HOME_FETCH_KEY, no limits;
+//  2. microlink with our key (secret MICROLINK_KEY — free account, 25 lookups a day);
+//  3. without a key, the site tries microlink's keyless service from the visitor's
+//     browser and POSTs the page here.
 import { verifyUser } from "./auth.js";
 import { json } from "./http.js";
 import { isVestiaire, vestiaireDetails } from "./vestiaire.js";
@@ -37,9 +39,31 @@ export async function handleLookup(request, env) {
   if (!target) return json({ error: "invalid url" }, 400);
 
   const direct = await readDirectly(target);
-  if (direct.result || !env.MICROLINK_KEY) return reply(direct);
-  // The shop turned us away (or showed nothing readable): once more through microlink.
+  if (direct.result) return reply(direct);
+  // The shop turned us away (or showed nothing readable): the Pi at home, then microlink.
+  if (env.HOME_FETCH_URL && env.HOME_FETCH_KEY) {
+    const home = await readViaHome(target, env);
+    if (home.result) return reply(home);
+  }
+  if (!env.MICROLINK_KEY) return reply(direct);
   return reply({ ...(await readViaMicrolink(target, env)), microlinkTried: true });
+}
+
+// The home helper fetches the page from a normal home connection, which shops like
+// Vinted let in. If the Pi is off, this simply fails and the next fallback takes over.
+async function readViaHome(target, env) {
+  let response;
+  try {
+    response = await fetch(`${env.HOME_FETCH_URL.replace(/\/$/, "")}/fetch?url=${encodeURIComponent(target)}`, {
+      headers: { "X-Fetch-Key": env.HOME_FETCH_KEY },
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch {
+    return { error: "home helper not reachable", status: 502 };
+  }
+  if (!response.ok) return { error: `home helper: ${response.status}`, status: 502 };
+  const finalUrl = shopUrl(response.headers.get("X-Final-Url"), env) || target; // after redirects
+  return readHtml(finalUrl, await response.text());
 }
 
 // { result } on success, otherwise { error, status } — the site tells the visitor what happened.
