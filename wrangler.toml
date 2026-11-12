@@ -7,6 +7,8 @@
 # never in this file:
 #   SMTP_USER      Gmail address that sends the reservation e-mails
 #   SMTP_PASS      its 16-letter Google app password
+#   BLOCKED_EMAILS optional: Hannah's own e-mail addresses, separated by commas — they can't
+#                  check or reserve gifts, so she can't peek
 #   HOME_FETCH_KEY optional: key of the home helper on the Raspberry Pi (pi/fetch.py)
 #   MICROLINK_KEY  optional: microlink.io API key, for shops that turn the Worker away (e.g. Vinted)
 name = "wunschliste"

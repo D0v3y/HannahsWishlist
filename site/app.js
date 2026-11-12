@@ -704,6 +704,9 @@ function reserveMessage(err) {
   switch (err?.status) {
     case 400: return "Bitte prüfe deinen Namen und deine E-Mail-Adresse.";
     case 401: return "Deine Anmeldung ist abgelaufen – bitte lade die Seite neu.";
+    case 403: return err.data?.error === "blocked"
+      ? "Nicht spicken! 😉 Mit dieser E-Mail-Adresse lassen sich keine Geschenke prüfen."
+      : "Mit diesem Konto lassen sich keine Geschenke prüfen.";
     case 404: return "Diesen Wunsch gibt es nicht mehr.";
     case 429: return "Du hast gerade schon einige Anfragen geschickt – bitte versuch es in einer Stunde noch einmal.";
     case 502: return "Die E-Mail konnte gerade nicht verschickt werden. Bitte versuch es später noch einmal.";

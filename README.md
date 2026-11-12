@@ -51,7 +51,8 @@ Restrict the browser API key (Google Cloud → APIs & Services → Credentials) 
 - D1 databases `wunschliste` and `wunschliste-staging` (IDs in `wrangler.toml`).
 - Secrets on each Worker (Settings → Variables and Secrets → Add → type **Secret**):
   `SMTP_USER` (Gmail address) and `SMTP_PASS` (its Google app password); optionally `MICROLINK_KEY`
-  (see *Ausfüllen* below).
+  (see *Ausfüllen* below) and `BLOCKED_EMAILS` (Hannah's own addresses, separated by commas — they can't
+  check or reserve gifts; `+tags` and Gmail dots are ignored when comparing).
 - Email Routing for `support@hannahswunschliste.com` → your inbox.
 
 ## Working on it

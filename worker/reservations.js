@@ -27,6 +27,8 @@ export async function handleReserve(request, env, ctx) {
   const email = cleanEmail(body.email);
   const wishId = typeof body.wishId === "string" && /^[\w-]{1,128}$/.test(body.wishId) ? body.wishId : null;
   if (!firstName || !email || !wishId) return json({ error: "invalid input" }, 400);
+  // The owner's own addresses get no answers — no peeking at what is already reserved.
+  if (isBlocked(env, email)) return json({ error: "blocked" }, 403);
 
   const wishName = await wishTitle(env, wishId, user.token);
   if (!wishName) return json({ error: "unknown wish" }, 404);
@@ -250,6 +252,19 @@ function cleanFirstName(raw) {
 function cleanEmail(raw) {
   const email = String(raw || "").trim().toLowerCase();
   return email.length <= 254 && /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(email) ? email : null;
+}
+
+// BLOCKED_EMAILS: the owner's addresses, separated by commas or spaces. Compared without
+// "+tags", and for Gmail without dots, so anna.b+x@googlemail.com counts as annab@gmail.com.
+function isBlocked(env, email) {
+  const plain = (address) => {
+    const [name, domain = ""] = address.trim().toLowerCase().split("@");
+    const gmail = domain === "gmail.com" || domain === "googlemail.com";
+    const user = name.split("+")[0];
+    return `${gmail ? user.replace(/\./g, "") : user}@${gmail ? "gmail.com" : domain}`;
+  };
+  const blocked = String(env.BLOCKED_EMAILS || "").split(/[\s,;]+/).filter(Boolean).map(plain);
+  return blocked.includes(plain(email));
 }
 
 async function linkParams(request) {
