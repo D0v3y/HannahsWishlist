@@ -32,21 +32,21 @@ export async function handleLookup(request, env) {
     const target = shopUrl(body?.url, env);
     const html = typeof body?.html === "string" ? body.html : null;
     if (!target || html === null || html.length > 10_000_000) return json({ error: "invalid input" }, 400); // Amazon pages are ~3 MB
-    return reply(await readHtml(target, html, body.preview));
+    return reply(await readHtml(target, html, body.preview), "browser");
   }
 
   const target = shopUrl(new URL(request.url).searchParams.get("url"), env);
   if (!target) return json({ error: "invalid url" }, 400);
 
   const direct = await readDirectly(target);
-  if (direct.result) return reply(direct);
+  if (direct.result) return reply(direct, "shop");
   // The shop turned us away (or showed nothing readable): the Pi at home, then microlink.
   if (env.HOME_FETCH_URL && env.HOME_FETCH_KEY) {
     const home = await readViaHome(target, env);
-    if (home.result) return reply(home);
+    if (home.result) return reply(home, "pi");
   }
   if (!env.MICROLINK_KEY) return reply(direct);
-  return reply({ ...(await readViaMicrolink(target, env)), microlinkTried: true });
+  return reply({ ...(await readViaMicrolink(target, env)), microlinkTried: true }, "microlink");
 }
 
 // The home helper fetches the page from a normal home connection, which shops like
@@ -67,8 +67,9 @@ async function readViaHome(target, env) {
 }
 
 // { result } on success, otherwise { error, status } — the site tells the visitor what happened.
-function reply({ result, error, status, microlinkTried }) {
-  if (result) return json(result);
+// `via` says how the page was read: shop (directly), pi, microlink, browser (keyless microlink).
+function reply({ result, error, status, microlinkTried }, via) {
+  if (result) return json({ ...result, via });
   return json(microlinkTried ? { error, microlinkTried } : { error }, status);
 }
 

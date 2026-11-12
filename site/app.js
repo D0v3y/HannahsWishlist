@@ -508,9 +508,11 @@ async function autofill() {
     const priceTip = els.price.value.trim() ? "" : " Jetzt fehlt nur noch der Preis.";
     const breakdown = filled.includes("Preis") && info.priceNote ? ` Preis: ${info.priceNote}.` : "";
     const sold = info.sold ? " Achtung: Der Artikel ist im Shop als verkauft markiert." : "";
+    // shops that block our server are read another way — say which, so it's easy to check
+    const via = { pi: " (über den Pi)", microlink: " (über microlink)", browser: " (über microlink)" }[info.via] || "";
     setNote(
       els.autofillStatus,
-      (filled.length ? `${joinWords(filled)} ausgefüllt – schau kurz drüber.${breakdown}${priceTip}` : "Es ist schon alles ausgefüllt.") + sold,
+      (filled.length ? `${joinWords(filled)} ausgefüllt${via} – schau kurz drüber.${breakdown}${priceTip}` : "Es ist schon alles ausgefüllt.") + sold,
       "ok",
     );
   } catch (err) {
@@ -550,6 +552,7 @@ async function lookUpProduct(url) {
     price: typeof data.price === "number" && data.price > 0 ? data.price : null,
     priceNote: data.priceNote || "",
     sold: Boolean(data.sold),
+    via: data.via || "",
   };
 }
 
