@@ -299,6 +299,13 @@ function bindEvents() {
   $("#filter-max").addEventListener("input", onFilterInput);
   $("#filter-reset").addEventListener("click", resetFilter);
   $("#intro-open").addEventListener("click", () => $("#intro-dialog").showModal());
+  // closing the note draws the eye to the ball it can be reopened from
+  $("#intro-dialog").addEventListener("close", () => {
+    const ball = $("#intro-open");
+    ball.classList.remove("is-landing");
+    void ball.offsetWidth; // lets the animation start over
+    ball.classList.add("is-landing");
+  });
 
   document.querySelectorAll("[data-add]").forEach((btn) => btn.addEventListener("click", () => openWishDialog()));
   document.querySelectorAll("[data-close]").forEach((btn) =>

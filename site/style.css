@@ -523,8 +523,7 @@ main {
 .site-footer a { color: inherit; text-underline-offset: 3px; }
 .site-footer a:hover { color: var(--ink); }
 .site-footer .link-btn { margin: 0; padding: 2px 6px; }
-.guest-only { display: none; }
-.is-guest .guest-only { display: block; }
+.is-guest .site-footer { padding-bottom: 96px; } /* room for the "?" ball */
 
 /* ─── Buttons ────────────────────────────────────────────── */
 .btn {
@@ -573,6 +572,32 @@ main {
   transition: background .15s, transform .15s;
 }
 .is-editor .fab { display: inline-flex; }
+
+/* guests: "?" ball that reopens the note about reserving */
+.help-ball {
+  position: fixed;
+  z-index: 10;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  display: none;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 12px 30px -10px color-mix(in srgb, var(--accent) 70%, black);
+  transition: background .15s, transform .15s;
+}
+.is-guest .help-ball { display: grid; }
+@media (hover: hover) { .help-ball:hover { background: var(--accent-hover); transform: scale(1.06); } } /* not on touch screens, where hover sticks */
+.help-ball.is-landing { animation: land .6s cubic-bezier(.2, .9, .3, 1.3); }
 .fab:hover { background: var(--accent-hover); transform: translateY(-1px); }
 .fab svg { width: 20px; height: 20px; stroke-width: 2.4; }
 @media (max-width: 600px) {
@@ -860,6 +885,11 @@ dialog.sheet:focus { outline: none; } /* focused on open (autofocus) so Safari d
 @keyframes sheet-up { from { transform: translateY(100%); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes land {
+  0% { transform: scale(0); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  60% { transform: scale(1.18); }
+  100% { transform: scale(1); box-shadow: 0 0 0 18px transparent; }
+}
 @keyframes nudge {
   0% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
   45% { transform: scale(1.04); }
