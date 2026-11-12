@@ -40,8 +40,16 @@ export async function handleReserve(request, env, ctx) {
   const taken = await reservedBy(db, wishId);
   let mail;
   if (taken) {
-    // asking again about your own gift (e.g. from another device) must not read "taken by Anna"
-    mail = taken.email === email ? yoursMail(env, { firstName, wishName }) : takenMail(env, { firstName, wishName, by: taken.first_name });
+    if (taken.email === email) {
+      // Asking again about your own gift (e.g. from another device) must not read "taken by Anna".
+      // The mail carries a fresh cancel link in case the first one got deleted; only a hash of
+      // the old one is stored, so it is replaced — the newest e-mail holds the valid link.
+      const cancelToken = randomToken(24);
+      await db.prepare("UPDATE reservations SET cancel_hash = ? WHERE id = ? AND status = 'confirmed'").bind(await sha256(cancelToken), taken.id).run();
+      mail = yoursMail(env, { firstName, wishName, link: `${new URL(request.url).origin}/reservierung/aufheben?id=${taken.id}&t=${cancelToken}` });
+    } else {
+      mail = takenMail(env, { firstName, wishName, by: taken.first_name });
+    }
   } else {
     const id = randomToken(12);
     const token = randomToken(24);
@@ -166,13 +174,13 @@ function reservedMail(env, { firstName, wishName, link }) {
 }
 
 // Answer to "Noch frei?" when the asker's own address already holds the reservation.
-function yoursMail(env, { firstName, wishName }) {
+function yoursMail(env, { firstName, wishName, link }) {
   return {
     subject: `Schon für dich reserviert: ${short(wishName)}`,
     text:
       `Hallo ${firstName}!\n\n` +
       `${possessive(owner(env))} Wunsch „${wishName}“ ist bereits für dich reserviert – du brauchst nichts weiter zu tun.\n\n` +
-      `Den Link zum Aufheben findest du in der E-Mail „Reserviert: …“, die du nach dem Reservieren bekommen hast.${support(env)}`,
+      `Um die Reservierung wieder aufzuheben, kannst du jederzeit diesen Link klicken:\n\n${link}${support(env)}`,
   };
 }
 
@@ -202,9 +210,9 @@ async function database(env) {
   return env.DB;
 }
 
-// Who holds the wish: { first_name, email }, or null while it is free.
+// Who holds the wish: { id, first_name, email }, or null while it is free.
 async function reservedBy(db, wishId) {
-  return (await db.prepare("SELECT first_name, email FROM reservations WHERE wish_id = ? AND status = 'confirmed'").bind(wishId).first()) || null;
+  return (await db.prepare("SELECT id, first_name, email FROM reservations WHERE wish_id = ? AND status = 'confirmed'").bind(wishId).first()) || null;
 }
 
 // The wish's name comes from Firestore (read with the visitor's own sign-in), never from
