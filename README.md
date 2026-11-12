@@ -7,8 +7,11 @@ Hannah signs in with her own account to add, edit and remove wishes.
 - **Adding a wish:** *Wunsch hinzufügen* → paste a shop link (or the text a shop app's *Teilen* button copies)
   → *Ausfüllen* fills in name, picture and price → *Hinzufügen*. For Vestiaire Collective the price includes
   shipping to Germany and duties/taxes.
-- **Reserving a gift (guests):** *Geschenk reservieren* → name + e-mail → a confirmation link arrives by e-mail.
-  Reservations live outside Firebase, so Hannah never sees them; the result only goes out by e-mail.
+- **Checking and reserving a gift (guests):** *Noch frei? Jetzt prüfen* → first name + e-mail → an e-mail says
+  whether the gift is still free and, if so, carries the link that reserves it. Reservations live outside
+  Firebase, so Hannah never sees them; the answer only goes out by e-mail.
+- **Against double gifts:** guests get a note on every visit asking them to reserve before buying, and a wish's
+  shop link stays locked on their device until they have checked that wish (tapping it points at the button).
 - **Price filter:** "Preis von … bis … €" above the list.
 
 ## How it's built

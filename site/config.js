@@ -3,6 +3,7 @@ export const site = {
   title: "Hannahs Wunschliste",
   subtitle: "Weihnachten 2026",
   ownerName: "Hannah", // used in texts like "ein Geschenk für Hannah"
+  supportEmail: "support@hannahswunschliste.com", // shown at the bottom of the page ("" hides the line)
   currency: "EUR", // ISO code: "EUR", "USD", "GBP", …
   locale: "de-DE", // number format: "de-DE" → 29,99 €  ·  "en-US" → €29.99
 };

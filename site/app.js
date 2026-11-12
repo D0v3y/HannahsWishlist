@@ -40,6 +40,7 @@ const els = {
 const autofillAvailable = !isPreview; // needs our server, which preview mode doesn't have
 const AUTOFILL_HINT = autofillAvailable ? els.autofillStatus.textContent : ""; // empty hides the hint
 const RESERVER_KEY = "wishlist-reserver"; // remembers name + e-mail for the next reservation
+const CHECKED_KEY = "wishlist-checked"; // wishes this device has asked about — their shop links are unlocked
 const EMAIL_PATTERN = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i; // same rule as the server
 
 const state = {
@@ -53,7 +54,9 @@ const state = {
   lookupId: 0, // ignores stale auto-fill results after the form changes
   firstPaint: true,
   filter: { min: null, max: null }, // price range chosen by the viewer
-  reserving: null, // the wish in the reservation window
+  reserving: null, // the wish in the "Noch frei?" window
+  checked: readChecked(), // wish id → when this device asked whether it is still free
+  introShown: false, // the note for guests appears once per visit
 };
 
 // index.html shows a note instead when the browser is too old for the site
@@ -90,9 +93,13 @@ function applySiteSettings() {
   els.price.placeholder = priceForInput(29.99);
   els.autofillBtn.hidden = !autofillAvailable;
   $("#reserve-intro").textContent =
-    `Hier kannst du ein Geschenk für ${site.ownerName} reservieren, ohne dass sie davon erfährt. ` +
-    "Gib deinen Namen und deine E-Mail-Adresse an. Du bekommst dann eine E-Mail, mit der du die Reservierung bestätigst – " +
-    "oder den Hinweis, dass das Geschenk schon reserviert wurde.";
+    "Schenkt das schon jemand anderes? Gib deinen Vornamen und deine E-Mail-Adresse an – du bekommst sofort eine E-Mail mit der Antwort. " +
+    `Ist das Geschenk noch frei, kannst du es dort mit einem Klick für dich reservieren. ${site.ownerName} erfährt davon nichts.`;
+  $("#intro-lead").textContent = `Damit ${site.ownerName} kein Geschenk doppelt bekommt: Bitte reserviere dein Geschenk, bevor du es kaufst.`;
+  $("#intro-secret").textContent = `${site.ownerName} erfährt nicht, wer was reserviert – die Überraschung bleibt.`;
+  $("#support-line").hidden = !site.supportEmail;
+  $("#support-link").textContent = site.supportEmail;
+  $("#support-link").href = `mailto:${site.supportEmail}`;
 }
 
 function renderSkeleton() {
@@ -105,6 +112,7 @@ function renderSkeleton() {
 function onUserChanged(user) {
   state.user = user;
   renderAuth();
+  if (isGuest(user)) showIntro();
   state.stopWishes?.();
   state.stopWishes = null;
   if (!user) {
@@ -129,6 +137,13 @@ function onUserChanged(user) {
 }
 
 const isGuest = (user) => user?.email?.toLowerCase() === guestEmail.toLowerCase();
+
+// Guests get this note on every visit: check and reserve a gift before buying it.
+function showIntro() {
+  if (state.introShown || document.querySelector("dialog[open]")) return;
+  state.introShown = true;
+  $("#intro-dialog").showModal();
+}
 
 function renderAuth() {
   const editor = Boolean(state.user) && !isGuest(state.user);
@@ -215,10 +230,19 @@ function wishCard(wish) {
   desc.textContent = wish.description ?? "";
   desc.hidden = !wish.description;
 
+  // Guests get the way to the shop only after asking whether the gift is still free —
+  // nobody should buy something without having come across that step.
+  const guest = isGuest(state.user);
+  const checked = guest && Boolean(state.checked[wish.id]);
+  const locked = Boolean(link) && guest && !checked;
+  const lock = $(".wish-link-locked", card);
+  card.classList.toggle("is-checked", checked);
+
   $(".wish-price", card).textContent = hasPrice ? money.format(wish.price) : "";
-  $(".wish-link", card).hidden = !link;
+  $("a.wish-link", card).hidden = !link || locked;
+  lock.hidden = !locked;
   $(".wish-foot", card).hidden = !link && !hasPrice;
-  if (link) card.querySelectorAll("a").forEach((a) => (a.href = link));
+  if (link && !locked) card.querySelectorAll("a").forEach((a) => (a.href = link));
 
   const edit = $(".edit", card);
   const del = $(".delete", card);
@@ -226,10 +250,35 @@ function wishCard(wish) {
   del.setAttribute("aria-label", `„${wish.name}“ löschen`);
   edit.addEventListener("click", () => openWishDialog(wish));
   const reserve = $(".wish-reserve", card);
-  reserve.setAttribute("aria-label", `„${wish.name}“ als Geschenk reservieren`);
+  const label = checked ? "Nochmal prüfen" : "Noch frei? Jetzt prüfen";
+  $("span", reserve).textContent = label;
+  reserve.setAttribute("aria-label", `${label}: „${wish.name}“`);
   reserve.addEventListener("click", () => openReserveDialog(wish));
+  if (locked) {
+    const nudge = (e) => {
+      e.preventDefault();
+      nudgeToCheck(reserve);
+    };
+    lock.setAttribute("aria-label", `Zum Shop (noch gesperrt): Prüfe zuerst, ob „${wish.name}“ noch frei ist`);
+    lock.addEventListener("click", nudge);
+    $(".media-link", card).addEventListener("click", nudge); // the picture leads to the shop too
+  }
   del.addEventListener("click", () => deleteWish(wish));
   return card;
+}
+
+// Someone tried the locked shop link: point them at the button they skipped.
+let nudgeTimer;
+function nudgeToCheck(button) {
+  document.querySelectorAll(".wish-reserve.is-nudged").forEach((b) => b.classList.remove("is-nudged"));
+  void button.offsetWidth; // lets the animation start over when tapped again
+  button.classList.add("is-nudged");
+  clearTimeout(nudgeTimer);
+  nudgeTimer = setTimeout(() => button.classList.remove("is-nudged"), 2600);
+  // bring it on screen, clear of the toast at the bottom
+  const box = button.getBoundingClientRect();
+  if (box.top < 0 || box.bottom > window.innerHeight - 180) button.scrollIntoView({ block: "center", behavior: "smooth" });
+  toast("Bitte prüfe zuerst, ob das Geschenk noch frei ist.");
 }
 
 function showLoadError({ blocked = false } = {}) {
@@ -249,6 +298,7 @@ function bindEvents() {
   $("#filter-min").addEventListener("input", onFilterInput);
   $("#filter-max").addEventListener("input", onFilterInput);
   $("#filter-reset").addEventListener("click", resetFilter);
+  $("#intro-open").addEventListener("click", () => $("#intro-dialog").showModal());
 
   document.querySelectorAll("[data-add]").forEach((btn) => btn.addEventListener("click", () => openWishDialog()));
   document.querySelectorAll("[data-close]").forEach((btn) =>
@@ -590,14 +640,15 @@ async function api(path, { method = "GET", body } = {}) {
   return data;
 }
 
-// ─── Reserving a gift (guests) ──────────────────────────────
-// The result (reserved for you / already taken) only goes out by e-mail, so nothing
-// about reservations ever shows up on the page.
+// ─── "Noch frei?" — checking and reserving a gift (guests) ──
+// The answer (still free, with a link to reserve it / already taken) only goes out by
+// e-mail, so nothing about reservations ever shows up on the page. Asking unlocks the
+// wish's shop link on this device.
 function openReserveDialog(wish) {
   state.reserving = wish;
   $("#reserve-form").classList.remove("is-sent");
   $("#reserve-wish").textContent = `„${wish.name}“`;
-  $("#reserve-submit").textContent = "Senden";
+  $("#reserve-submit").textContent = "Prüfen";
   showError($("#reserve-error"), "");
   const saved = readStorage(RESERVER_KEY);
   $("#r-name").value = saved?.name || "";
@@ -623,14 +674,15 @@ async function onReserve(e) {
   }
 
   const button = $("#reserve-submit");
-  setBusy(button, true, "Senden …");
+  setBusy(button, true, "Einen Moment …");
   try {
     if (isPreview) await new Promise((r) => setTimeout(r, 500)); // preview mode: no e-mails
     else await api("/api/reservations", { method: "POST", body: { wishId: state.reserving.id, name, email } });
     writeStorage(RESERVER_KEY, { name, email });
+    markChecked(state.reserving.id);
     $("#reserve-done-text").textContent =
-      `Wir haben dir eine E-Mail an ${email} geschickt. Darin steht, ob du das Geschenk reservieren kannst – ` +
-      "bestätige die Reservierung dort mit einem Klick. Keine E-Mail bekommen? Schau auch im Spam-Ordner nach.";
+      `Wir haben dir eine E-Mail an ${email} geschickt. Darin steht, ob das Geschenk noch frei ist – ` +
+      "wenn ja, reserviere es dort bitte mit einem Klick, bevor du es kaufst. Keine E-Mail bekommen? Schau auch im Spam-Ordner nach.";
     form.classList.add("is-sent");
     setBusy(button, false);
     button.textContent = "Fertig";
@@ -650,6 +702,17 @@ function reserveMessage(err) {
     case 502: return "Die E-Mail konnte gerade nicht verschickt werden. Bitte versuch es später noch einmal.";
     default: return "Das hat leider nicht geklappt. Bitte versuch es noch einmal.";
   }
+}
+
+function readChecked() {
+  const saved = readStorage(CHECKED_KEY);
+  return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+}
+
+function markChecked(wishId) {
+  state.checked[wishId] = Date.now();
+  writeStorage(CHECKED_KEY, state.checked);
+  renderWishes(); // the card now shows the open shop link
 }
 
 function readStorage(key) {

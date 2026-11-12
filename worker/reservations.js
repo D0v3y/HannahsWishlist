@@ -1,8 +1,10 @@
 // Gift reservations. Stored in Cloudflare D1 — completely outside Firebase, so the
 // owner of the list can't see them — and the result only ever goes out by e-mail.
 //   POST     /api/reservations             { wishId, name, email }   (guests only)
-//   GET|POST /reservierung/bestaetigen?id&t  confirm link from the first e-mail
-//   GET|POST /reservierung/aufheben?id&t     cancel link from the confirmation e-mail
+//            "Noch frei?" — answers by e-mail: still free (with a link to reserve it),
+//            already reserved by someone else, or already reserved for you
+//   GET|POST /reservierung/bestaetigen?id&t  reserve link from the "still free" e-mail
+//   GET|POST /reservierung/aufheben?id&t     cancel link from the "reserved" e-mail
 // The links open a page with a button instead of acting right away, because e-mail
 // programs open links on their own to scan them.
 import { verifyUser } from "./auth.js";
@@ -36,7 +38,8 @@ export async function handleReserve(request, env, ctx) {
   const taken = await reservedBy(db, wishId);
   let mail;
   if (taken) {
-    mail = takenMail(env, { firstName, wishName, by: taken });
+    // asking again about your own gift (e.g. from another device) must not read "taken by Anna"
+    mail = taken.email === email ? yoursMail(env, { firstName, wishName }) : takenMail(env, { firstName, wishName, by: taken.first_name });
   } else {
     const id = randomToken(12);
     const token = randomToken(24);
@@ -44,7 +47,7 @@ export async function handleReserve(request, env, ctx) {
       .prepare("INSERT INTO reservations (id, wish_id, wish_name, first_name, email, status, confirm_hash, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)")
       .bind(id, wishId, wishName, firstName, email, await sha256(token), Date.now())
       .run();
-    mail = confirmMail(env, { firstName, wishName, link: `${new URL(request.url).origin}/reservierung/bestaetigen?id=${id}&t=${token}` });
+    mail = freeMail(env, { firstName, wishName, link: `${new URL(request.url).origin}/reservierung/bestaetigen?id=${id}&t=${token}` });
   }
 
   await logMail(db, email, ip, ctx);
@@ -68,16 +71,16 @@ export async function handleConfirm(request, env, ctx) {
     return page("Schon bestätigt", `<div class="icon">🎁</div><h1>Schon bestätigt</h1><p>${wish} ist bereits für dich reserviert.</p>`);
   }
   if (row.status !== "pending" || Date.now() - row.created_at > CONFIRM_HOURS * 3600_000) {
-    return page("Link abgelaufen", `<div class="icon">⏳</div><h1>Link abgelaufen</h1><p>Dieser Bestätigungslink ist nicht mehr gültig. Du kannst das Geschenk auf der Wunschliste einfach noch einmal reservieren.</p>`, 410);
+    return page("Link abgelaufen", `<div class="icon">⏳</div><h1>Link abgelaufen</h1><p>Dieser Link ist nicht mehr gültig. Du kannst auf der Wunschliste einfach noch einmal prüfen, ob das Geschenk noch frei ist.</p>`, 410);
   }
   const taken = await reservedBy(db, row.wish_id);
-  if (taken) return takenPage(wish, taken);
+  if (taken) return takenPage(wish, taken, row.email);
 
   if (request.method !== "POST") {
     return page(
-      "Reservierung bestätigen",
-      `<div class="icon">🎁</div><h1>Reservierung bestätigen</h1>
-      <p>Hallo ${escapeHtml(row.first_name)}! Möchtest du ${wish} für dich reservieren?</p>
+      "Geschenk reservieren",
+      `<div class="icon">🎁</div><h1>Geschenk reservieren</h1>
+      <p>Hallo ${escapeHtml(row.first_name)}! ${wish} ist noch frei. Möchtest du es für dich reservieren?</p>
       <form method="post"><input type="hidden" name="id" value="${escapeHtml(row.id)}"><input type="hidden" name="t" value="${escapeHtml(t)}"><button>Ja, reservieren</button></form>`,
     );
   }
@@ -91,7 +94,7 @@ export async function handleConfirm(request, env, ctx) {
     if (!done.meta.changes) return invalidLink();
   } catch (err) {
     // Only one confirmed reservation per wish (unique index): someone was a moment faster.
-    if (/unique/i.test(String(err?.message))) return takenPage(wish, (await reservedBy(db, row.wish_id)) || "jemand anderem");
+    if (/unique/i.test(String(err?.message))) return takenPage(wish, await reservedBy(db, row.wish_id), row.email);
     throw err;
   }
 
@@ -137,14 +140,16 @@ const possessive = (name) => (/[sßxz]$/i.test(name) ? `${name}’` : `${name}s`
 const short = (text) => (text.length > 60 ? `${text.slice(0, 57)}…` : text);
 const support = (env) => (env.SUPPORT_EMAIL ? `\n\nBei Problemen oder Fragen kannst du dich gerne an ${env.SUPPORT_EMAIL} wenden.` : "");
 
-function confirmMail(env, { firstName, wishName, link }) {
+// Answer to "Noch frei?": yes — and here is the link to reserve it.
+function freeMail(env, { firstName, wishName, link }) {
   return {
-    subject: `Bitte bestätige deine Reservierung: ${short(wishName)}`,
+    subject: `Noch frei: ${short(wishName)}`,
     text:
       `Hallo ${firstName}!\n\n` +
-      `Du möchtest ${possessive(owner(env))} Wunsch „${wishName}“ reservieren. Bitte bestätige die Reservierung mit diesem Link:\n\n${link}\n\n` +
-      `Der Link ist ${CONFIRM_HOURS} Stunden gültig. Erst nach der Bestätigung ist das Geschenk für dich reserviert. ` +
-      `Falls du nichts reservieren wolltest, kannst du diese E-Mail einfach ignorieren.${support(env)}`,
+      `Gute Nachricht: ${possessive(owner(env))} Wunsch „${wishName}“ ist noch frei.\n\n` +
+      `Möchtest du ihn schenken? Dann reserviere ihn bitte mit diesem Link, damit ${owner(env)} nichts doppelt bekommt:\n\n${link}\n\n` +
+      `Der Link ist ${CONFIRM_HOURS} Stunden gültig. Reserviert ist das Geschenk erst, wenn du den Link geöffnet und dort bestätigt hast. ` +
+      `Möchtest du es doch nicht schenken, kannst du diese E-Mail einfach ignorieren.${support(env)}`,
   };
 }
 
@@ -155,6 +160,17 @@ function reservedMail(env, { firstName, wishName, link }) {
       `Hallo ${firstName}!\n\n` +
       `${possessive(owner(env))} Wunsch „${wishName}“ ist jetzt für dich reserviert.\n\n` +
       `Um die Reservierung wieder aufzuheben, kannst du jederzeit diesen Link klicken:\n\n${link}${support(env)}`,
+  };
+}
+
+// Answer to "Noch frei?" when the asker's own address already holds the reservation.
+function yoursMail(env, { firstName, wishName }) {
+  return {
+    subject: `Schon für dich reserviert: ${short(wishName)}`,
+    text:
+      `Hallo ${firstName}!\n\n` +
+      `${possessive(owner(env))} Wunsch „${wishName}“ ist bereits für dich reserviert – du brauchst nichts weiter zu tun.\n\n` +
+      `Den Link zum Aufheben findest du in der E-Mail „Reserviert: …“, die du nach dem Reservieren bekommen hast.${support(env)}`,
   };
 }
 
@@ -184,9 +200,9 @@ async function database(env) {
   return env.DB;
 }
 
+// Who holds the wish: { first_name, email }, or null while it is free.
 async function reservedBy(db, wishId) {
-  const row = await db.prepare("SELECT first_name FROM reservations WHERE wish_id = ? AND status = 'confirmed'").bind(wishId).first();
-  return row?.first_name || null;
+  return (await db.prepare("SELECT first_name, email FROM reservations WHERE wish_id = ? AND status = 'confirmed'").bind(wishId).first()) || null;
 }
 
 // The wish's name comes from Firestore (read with the visitor's own sign-in), never from
@@ -249,8 +265,13 @@ function invalidLink() {
   return page("Link ungültig", `<div class="icon">🤔</div><h1>Link ungültig</h1><p>Dieser Link ist nicht (mehr) gültig. Bitte nutze den Link aus deiner neuesten E-Mail.</p>`, 404);
 }
 
-function takenPage(wish, by) {
-  return page("Schon reserviert", `<div class="icon">🎁</div><h1>Schon reserviert</h1><p>Leider wurde ${wish} inzwischen von ${escapeHtml(by)} reserviert. Vielleicht findest du ja etwas anderes.</p>`);
+// `taken` is the reservation that holds the wish, `email` the address of whoever opened the link.
+function takenPage(wish, taken, email) {
+  if (taken?.email === email) {
+    return page("Schon reserviert", `<div class="icon">🎁</div><h1>Schon reserviert</h1><p>${wish} ist bereits für dich reserviert – du brauchst nichts weiter zu tun.</p>`);
+  }
+  const by = escapeHtml(taken?.first_name || "jemand anderem");
+  return page("Schon reserviert", `<div class="icon">🎁</div><h1>Schon reserviert</h1><p>Leider wurde ${wish} inzwischen von ${by} reserviert. Vielleicht findest du ja etwas anderes.</p>`);
 }
 
 function randomToken(bytes) {
