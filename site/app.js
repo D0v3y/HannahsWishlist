@@ -759,13 +759,23 @@ async function onSave(e) {
     if (editing) await state.store.updateWish(editing.id, wish);
     else await state.store.addWish(wish);
     els.wishDialog.close();
-    toast(editing ? "Änderungen gespeichert" : "Zur Wunschliste hinzugefügt ✨");
+    toast(editing ? "Änderungen gespeichert" : addedMessage());
   } catch (err) {
     console.error(err);
     showError(els.wishError, saveMessage(err));
   } finally {
     setBusy(els.saveBtn, false);
   }
+}
+
+// One of the personal messages from config.js, never the same one twice in a row.
+let lastAddedMessage = "";
+function addedMessage() {
+  const all = (site.addedMessages || []).filter((m) => typeof m === "string" && m.trim());
+  if (!all.length) return "Zur Wunschliste hinzugefügt ✨";
+  const fresh = all.length > 1 ? all.filter((m) => m !== lastAddedMessage) : all;
+  lastAddedMessage = fresh[Math.floor(Math.random() * fresh.length)];
+  return lastAddedMessage;
 }
 
 async function deleteWish(wish) {
@@ -881,5 +891,6 @@ function toast(message) {
   els.toast.textContent = message;
   els.toast.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => els.toast.classList.remove("show"), 2800);
+  // longer messages stay up longer, so they can be read
+  toastTimer = setTimeout(() => els.toast.classList.remove("show"), Math.min(9000, Math.max(2800, message.length * 70)));
 }

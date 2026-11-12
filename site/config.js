@@ -4,6 +4,11 @@ export const site = {
   subtitle: "Weihnachten 2026",
   ownerName: "Hannah", // used in texts like "ein Geschenk für Hannah"
   supportEmail: "support@hannahswunschliste.com", // shown at the bottom of the page ("" hides the line)
+  // Little messages for Hannah: one of them, picked at random, pops up each time she adds a wish.
+  // One message per line, in quotes, with a comma at the end. Add as many as you like.
+  addedMessages: [
+    "Zur Wunschliste hinzugefügt ✨",
+  ],
   currency: "EUR", // ISO code: "EUR", "USD", "GBP", …
   locale: "de-DE", // number format: "de-DE" → 29,99 €  ·  "en-US" → €29.99
 };
