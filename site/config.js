@@ -6,8 +6,10 @@ export const site = {
   supportEmail: "support@hannahswunschliste.com", // shown at the bottom of the page ("" hides the line)
   // Little messages for Hannah: one of them, picked at random, pops up each time she adds a wish.
   // One message per line, with a comma at the end. Add as many as you like.
-  //   "Text"                                   a normal message
-  //   { text: "Text", rarity: "selten" }       shows up less often — see messageRarity below
+  //   "Text"                                          a normal message
+  //   { text: "Text", rarity: 0.25 }                  shows up a quarter as often as a normal one (normal = 1)
+  //   { text: "Text", noRepeat: true }                never shows twice in a row
+  //   { text: "Text", rarity: 0.25, noRepeat: true }  both
   addedMessages: [
     "Zur Wunschliste hinzugefügt ✨",
     "Gute Wahl Popi <3",
@@ -15,13 +17,6 @@ export const site = {
     "Darf ich das dann auch benutzen?👉🏻👈🏻",
     
   ],
-  // How likely a message of each rarity is, compared with a normal one (1).
-  // 0.25 = a quarter as often. Rename these, change the numbers or add your own.
-  messageRarity: {
-    selten: 0.25,
-    "sehr selten": 0.08,
-    legendär: 0.02,
-  },
   currency: "EUR", // ISO code: "EUR", "USD", "GBP", …
   locale: "de-DE", // number format: "de-DE" → 29,99 €  ·  "en-US" → €29.99
 };
