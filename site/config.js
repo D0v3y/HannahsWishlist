@@ -11,11 +11,15 @@ export const site = {
   //   { text: "Text", noRepeat: true }                never shows twice in a row
   //   { text: "Text", rarity: 0.25, noRepeat: true }  both
   addedMessages: [
-    "Zur Wunschliste hinzugefügt ✨",
-    "Gute Wahl Popi <3",
-    "Das hätte ich mir auch gewünscht!😮",
-    "Darf ich das dann auch benutzen?👉🏻👈🏻",
-    
+    { text: "Zur Wunschliste hinzugefügt ✨", rarity: 0.7 },
+    { text: "Gute Wahl Popi <3", rarity: 0.20 },
+    { text: "Das hätte ich mir auch gewünscht!😮", rarity: 0.20, noRepeat: true },
+    { text: "Darf ich das dann auch benutzen?👉🏻👈🏻", rarity: 0.10, noRepeat: true },
+    { text: "WOOOW!!!!🤩🤩🤩🤩", rarity: 0.10 },
+    { text: "🎄🎁✨🎉🎊🎅🏻👜🤶🏻🎊🎉✨🎁🎄", rarity: 0.10, noRepeat: true },
+    { text: "Tolle Jacke!", rarity: 0.05, noRepeat: true },
+    { text: "MEHR GESCHENKE!!!!🤬🤬🤬", rarity: 0.05, noRepeat: true },
+    { text: "Mir fällt nichts mehr ein.", rarity: 0.01, noRepeat: true },
   ],
   currency: "EUR", // ISO code: "EUR", "USD", "GBP", …
   locale: "de-DE", // number format: "de-DE" → 29,99 €  ·  "en-US" → €29.99
